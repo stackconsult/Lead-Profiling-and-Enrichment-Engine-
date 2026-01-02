@@ -1,0 +1,8 @@
+# packages.txt
+# System-level packages required for your Streamlit app
+# This file is used by Streamlit Cloud to install system dependencies
+# Add any Ubuntu packages you need, one per line
+
+# Example:
+# libgl1-mesa-glx
+# libglib2.0-0
