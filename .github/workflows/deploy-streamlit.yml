@@ -1,0 +1,13 @@
+name: Deploy Streamlit (notify)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify-streamlit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Streamlit Cloud redeploy
+        run: |
+          echo "Streamlit Cloud will auto-deploy from main. No action required."

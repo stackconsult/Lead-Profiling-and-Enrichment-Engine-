@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: prospectpulse-api
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.api.main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: VALKEY_URL
+        fromDatabase:
+          name: prospectpulse-valkey
+          property: connectionString
+
+  - type: worker
+    name: prospectpulse-worker
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: rq worker --url $VALKEY_URL
+    envVars:
+      - key: VALKEY_URL
+        fromDatabase:
+          name: prospectpulse-valkey
+          property: connectionString
+
+  - type: redis
+    name: prospectpulse-valkey
+    plan: free
+    maxmemoryPolicy: allkeys-lru

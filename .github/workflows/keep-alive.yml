@@ -1,0 +1,13 @@
+name: Keep Render Alive
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Warm Render web service
+        run: |
+          curl -fsS "${PING_URL:-https://prospectpulse-api.onrender.com/health}" || true
