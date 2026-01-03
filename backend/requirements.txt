@@ -13,3 +13,4 @@ google-generativeai==0.8.3
 python-multipart==0.0.16
 aiofiles==24.1.0
 pandas==2.2.3
+gunicorn==22.0.0
