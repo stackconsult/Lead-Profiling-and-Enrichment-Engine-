@@ -17,7 +17,7 @@ def _headers(token: Optional[str]) -> Dict[str, str]:
 
 def fetch_workspaces(api_token: Optional[str]) -> List[Dict]:
     try:
-        resp = requests.get(f"{API_URL}/workspaces", timeout=20, headers=_headers(api_token))
+        resp = requests.get(f"{API_URL}/api/workspaces", timeout=20, headers=_headers(api_token))
         resp.raise_for_status()
         return resp.json().get("items", [])
     except requests.exceptions.RequestException as e:
@@ -31,12 +31,12 @@ def create_workspace(workspace_id: str, provider: str, keys: Dict[str, str], api
         "provider": provider,
         "keys": keys,
     }
-    resp = requests.post(f"{API_URL}/workspaces", json=payload, timeout=20, headers=_headers(api_token))
+    resp = requests.post(f"{API_URL}/api/workspaces", json=payload, timeout=20, headers=_headers(api_token))
     return resp
 
 
 def delete_workspace(workspace_id: str, api_token: Optional[str]):
-    resp = requests.delete(f"{API_URL}/workspaces/{workspace_id}", timeout=20, headers=_headers(api_token))
+    resp = requests.delete(f"{API_URL}/api/workspaces/{workspace_id}", timeout=20, headers=_headers(api_token))
     return resp
 
 

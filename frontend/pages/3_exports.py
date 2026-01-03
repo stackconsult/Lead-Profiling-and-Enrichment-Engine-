@@ -30,7 +30,7 @@ def fetch_all(api_token: Optional[str]) -> List[dict]:
         while True:
             try:
                 resp = requests.get(
-                    f"{API_URL}/leads", 
+                    f"{API_URL}/api/leads", 
                     params={"page": page, "size": size}, 
                     timeout=20,
                     headers=_headers(api_token)

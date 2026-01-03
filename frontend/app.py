@@ -22,7 +22,7 @@ def _headers(api_token: Optional[str]) -> Dict[str, str]:
 
 def fetch_workspaces(api_token: Optional[str]):
     try:
-        resp = requests.get(f"{API_URL}/workspaces", timeout=20, headers=_headers(api_token))
+        resp = requests.get(f"{API_URL}/api/workspaces", timeout=20, headers=_headers(api_token))
         resp.raise_for_status()
         return resp.json().get("items", [])
     except requests.exceptions.RequestException as e:
@@ -32,7 +32,7 @@ def fetch_workspaces(api_token: Optional[str]):
 
 def post_enqueue(leads: List[dict], workspace_id: str, api_token: Optional[str]) -> str:
     resp = requests.post(
-        f"{API_URL}/enqueue",
+        f"{API_URL}/api/enqueue",
         params={"workspace_id": workspace_id},
         json=leads,
         timeout=30,
@@ -45,7 +45,7 @@ def post_enqueue(leads: List[dict], workspace_id: str, api_token: Optional[str])
 def fetch_leads(page: int, size: int = 50, api_token: Optional[str] = None):
     try:
         resp = requests.get(
-            f"{API_URL}/leads",
+            f"{API_URL}/api/leads",
             params={"page": page, "size": size},
             timeout=20,
             headers=_headers(api_token),
