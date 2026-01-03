@@ -169,22 +169,23 @@ with tab1:
                         messages = stream_job(API_URL, job_id, headers=_headers(api_token))
                         if messages:
                             latest = messages[-1]
-                            st.json(latest)
-                        else:
-                            st.info("No updates yet")
+                            st.success(f"✅ Latest update: {latest}")
                     except Exception as e:
-                        st.error(f"Stream error: {e}")
-        
+                        st.error(f"❌ Stream error: {e}")
         with col2:
-            if st.button("🔄 Check Status", use_container_width=True):
-                try:
-                    resp = requests.get(f"{API_URL}/status/{job_id}", headers=_headers(api_token))
-                    if resp.status_code == 200:
-                        st.json(resp.json())
-                    else:
-                        st.error("Job not found")
-                except Exception as e:
-                    st.error(f"Status check failed: {e}")
+            if st.button("🛑 Stop Stream", use_container_width=True):
+                st.session_state["job_id"] = None
+                st.rerun()
+        
+        if st.button("🔄 Check Status", use_container_width=True):
+            try:
+                resp = requests.get(f"{API_URL}/status/{job_id}", headers=_headers(api_token))
+                if resp.status_code == 200:
+                    st.json(resp.json())
+                else:
+                    st.error("Job not found")
+            except Exception as e:
+                st.error(f"Status check failed: {e}")
 
 with tab2:
     st.subheader("📈 Processed Results")
