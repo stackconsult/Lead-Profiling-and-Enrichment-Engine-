@@ -152,6 +152,8 @@ with tab1:
                 if st.button("🗑️ Clear Queue", use_container_width=True):
                     st.session_state["job_id"] = None
                     st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error reading CSV: {e}")
                     
     # Job monitoring
     job_id = st.session_state.get("job_id")
