@@ -47,7 +47,7 @@ def get_workspace(workspace_id: str) -> Dict[str, str]:
 async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
     workspace_id = payload.workspace_id or str(uuid.uuid4())
     mapping = {
-        "provider": payload.provider,
+        "provider": payload.keys.provider,  # Store provider from keys object
         "openai_key": payload.keys.openai_key or "",
         "gemini_key": payload.keys.gemini_key or "",
         "tavily_key": payload.keys.tavily_key or "",
