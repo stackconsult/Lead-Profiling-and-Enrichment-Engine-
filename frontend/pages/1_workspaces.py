@@ -96,6 +96,7 @@ with col1:
                 st.error("❌ Gemini API key is required for Gemini provider")
             else:
                 keys = {
+                    "provider": provider,
                     "openai_key": openai_key,
                     "gemini_key": gemini_key,
                     "tavily_key": tavily_key,
