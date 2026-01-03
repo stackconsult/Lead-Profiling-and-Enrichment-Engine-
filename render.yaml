@@ -9,19 +9,36 @@ services:
         fromDatabase:
           name: prospectpulse-valkey
           property: connectionString
+      - key: API_TOKEN
+        generateValue: true
+      - key: PYTHON_VERSION
+        value: 3.12
+    healthCheck:
+      path: /health
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
 
   - type: worker
     name: prospectpulse-worker
     env: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: rq worker --url $VALKEY_URL
+    startCommand: RUN_RQ_WORKER=true python backend/worker.py
     envVars:
       - key: VALKEY_URL
         fromDatabase:
           name: prospectpulse-valkey
           property: connectionString
+      - key: API_TOKEN
+        fromService:
+          type: web
+          name: prospectpulse-api
+          envVar: API_TOKEN
+      - key: PYTHON_VERSION
+        value: 3.12
 
   - type: redis
     name: prospectpulse-valkey
     plan: free
     maxmemoryPolicy: allkeys-lru
+    ipAllowList: []  # Allow all connections from services in same account

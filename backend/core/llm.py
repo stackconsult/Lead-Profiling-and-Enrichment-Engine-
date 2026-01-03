@@ -7,6 +7,7 @@ but does not hardcode external API keys; those are supplied per workspace.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol
 
@@ -95,3 +96,14 @@ class LLMClient:
 
     def batch_generate(self, prompts: List[str]) -> List[Dict]:
         return [self.generate(p) for p in prompts]
+
+
+# Global client instance using environment variables or defaults
+llm_keys = LLMKeys(
+    provider=os.getenv("LLM_PROVIDER", "openai"),
+    openai=os.getenv("OPENAI_API_KEY"),
+    gemini=os.getenv("GEMINI_API_KEY"),
+    tavily=os.getenv("TAVILY_API_KEY"),
+)
+
+llm_client = LLMClient(llm_keys)
