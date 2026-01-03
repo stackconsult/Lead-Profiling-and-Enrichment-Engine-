@@ -153,7 +153,7 @@ with tab1:
                     st.session_state["job_id"] = None
                     st.rerun()
         except Exception as e:
-            st.error(f"❌ Error reading CSV: {e}")
+            st.error(f"Error reading CSV: {e}")
                     
     # Job monitoring
     job_id = st.session_state.get("job_id")
