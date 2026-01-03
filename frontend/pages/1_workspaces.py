@@ -31,13 +31,21 @@ def create_workspace(workspace_id: str, provider: str, keys: Dict[str, str], api
         "provider": provider,
         "keys": keys,
     }
-    resp = requests.post(f"{API_URL}/api/workspaces", json=payload, timeout=20, headers=_headers(api_token))
-    return resp
+    try:
+        resp = requests.post(f"{API_URL}/api/workspaces", json=payload, timeout=20, headers=_headers(api_token))
+        return resp
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to create workspace: {e}")
+        return None
 
 
 def delete_workspace(workspace_id: str, api_token: Optional[str]):
-    resp = requests.delete(f"{API_URL}/api/workspaces/{workspace_id}", timeout=20, headers=_headers(api_token))
-    return resp
+    try:
+        resp = requests.delete(f"{API_URL}/api/workspaces/{workspace_id}", timeout=20, headers=_headers(api_token))
+        return resp
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to delete workspace: {e}")
+        return None
 
 
 st.set_page_config(page_title="Workspaces - ProspectPulse", layout="wide", page_icon="🏢")
