@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Protocol
 
 
 class LLMBackend(Protocol):
-    async def generate(self, prompt: str) -> Dict:
+    def generate(self, prompt: str) -> Dict:
         ...
 
 
@@ -26,28 +26,72 @@ class LLMKeys:
 
 class StubLLMBackend:
     """
-    Lightweight fallback used in tests or when keys are absent.
+    Fallback used when keys are absent. Returns a deterministic message.
     """
 
-    async def generate(self, prompt: str) -> Dict:
-        return {"content": f"[stubbed] {prompt[:80]}", "citations": []}
+    def generate(self, prompt: str) -> Dict:
+        return {"content": "LLM keys missing; please add keys in Workspaces.", "citations": []}
+
+
+class OpenAIBackend:
+    def __init__(self, api_key: str):
+        try:
+            from openai import OpenAI  # type: ignore
+        except Exception as exc:  # pragma: no cover - import guard
+            raise RuntimeError("openai package not installed") from exc
+        self.client = OpenAI(api_key=api_key)
+
+    def generate(self, prompt: str) -> Dict:
+        completion = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=256,
+            temperature=0.6,
+        )
+        content = completion.choices[0].message.content if completion.choices else ""
+        return {"content": content or "", "citations": []}
+
+
+class GeminiBackend:
+    def __init__(self, api_key: str):
+        try:
+            import google.generativeai as genai  # type: ignore
+        except Exception as exc:  # pragma: no cover - import guard
+            raise RuntimeError("google-generativeai package not installed") from exc
+        genai.configure(api_key=api_key)
+        self.model = genai.GenerativeModel("gemini-1.5-flash")
+
+    def generate(self, prompt: str) -> Dict:
+        response = self.model.generate_content(prompt)
+        content = getattr(response, "text", "") or ""
+        return {"content": content, "citations": []}
 
 
 class LLMClient:
     """
     Facade that selects an underlying backend based on provider string.
-
-    Real implementations for OpenAI and Gemini can be slotted in later
-    without changing the public interface.
     """
 
     def __init__(self, keys: LLMKeys):
         self.keys = keys
-        self.backend: LLMBackend = StubLLMBackend()
-        # Future: add concrete backends when API keys are present.
+        self.backend: LLMBackend = self._select_backend(keys)
 
-    async def generate(self, prompt: str) -> Dict:
-        return await self.backend.generate(prompt)
+    @staticmethod
+    def _select_backend(keys: LLMKeys) -> LLMBackend:
+        if keys.provider == "openai" and keys.openai:
+            try:
+                return OpenAIBackend(keys.openai)
+            except Exception:
+                return StubLLMBackend()
+        if keys.provider == "gemini" and keys.gemini:
+            try:
+                return GeminiBackend(keys.gemini)
+            except Exception:
+                return StubLLMBackend()
+        return StubLLMBackend()
 
-    async def batch_generate(self, prompts: List[str]) -> List[Dict]:
-        return [await self.generate(p) for p in prompts]
+    def generate(self, prompt: str) -> Dict:
+        return self.backend.generate(prompt)
+
+    def batch_generate(self, prompts: List[str]) -> List[Dict]:
+        return [self.generate(p) for p in prompts]

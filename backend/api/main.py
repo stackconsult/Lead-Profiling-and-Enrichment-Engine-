@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api import jobs, workspaces
 from backend.core.valkey import valkey_client
@@ -18,6 +18,14 @@ app.add_middleware(
 )
 
 
+def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
+    import os
+
+    expected = os.getenv("API_TOKEN")
+    if expected and x_api_token != expected:
+        raise HTTPException(status_code=401, detail="invalid API token")
+
+
 @app.get("/health")
 async def health() -> Dict[str, str]:
     try:
@@ -27,6 +35,6 @@ async def health() -> Dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(jobs.router)
-app.include_router(workspaces.router)
+app.include_router(jobs.router, dependencies=[Depends(verify_token)])
+app.include_router(workspaces.router, dependencies=[Depends(verify_token)])
 

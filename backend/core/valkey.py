@@ -6,6 +6,7 @@ and workspace configuration. This is distinct from Streamlit's UI state.
 """
 from __future__ import annotations
 
+import json
 import os
 from typing import Dict, Iterable, Optional
 
@@ -41,6 +42,7 @@ class FakeValkey:
     def __init__(self) -> None:
         self.store: Dict[str, Dict[str, str]] = {}
         self._lists: Dict[str, list] = {}
+        self._channels: Dict[str, list] = {}
         self.is_fake = True
 
     # Hash operations
@@ -80,6 +82,33 @@ class FakeValkey:
             return lst[start:]
         return lst[start : end + 1]
 
+    # Pub/Sub minimal stubs
+    def publish(self, channel: str, message: str) -> None:
+        self._channels.setdefault(channel, []).append(message)
+
+    class _FakePubSub:
+        def __init__(self, channels: Dict[str, list]):
+            self.channels = channels
+            self._subs: list[str] = []
+
+        def subscribe(self, channel: str):
+            if channel not in self._subs:
+                self._subs.append(channel)
+
+        def get_message(self, timeout: float | None = None):
+            for ch in list(self._subs):
+                items = self.channels.get(ch, [])
+                if items:
+                    data = items.pop(0)
+                    return {"type": "message", "data": data}
+            return None
+
+        def close(self):
+            self._subs.clear()
+
+    def pubsub(self):
+        return self._FakePubSub(self._channels)
+
     def flushdb(self) -> None:
         self.store.clear()
         self._lists.clear()
@@ -109,3 +138,9 @@ def set_job_status(job_id: str, status: str, progress: float | None = None, erro
     if error:
         mapping["error"] = error
     valkey_client.hset(f"jobs:{job_id}", mapping=mapping)
+    try:
+        payload = json.dumps(mapping)
+        valkey_client.publish(f"jobs:{job_id}:events", payload)
+    except Exception:
+        # Best-effort publish
+        pass

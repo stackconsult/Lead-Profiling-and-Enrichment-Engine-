@@ -6,8 +6,8 @@ from backend.agents.pipeline import AgentPipeline
 from backend.core.valkey import set_job_status
 
 
-def process_lead(lead: Dict, job_id: Optional[str] = None, workspace_id: Optional[str] = None) -> Dict:
-    pipeline = AgentPipeline(workspace_id=workspace_id)
+def process_lead(lead: Dict, job_id: Optional[str] = None, workspace: Optional[Dict] = None) -> Dict:
+    pipeline = AgentPipeline(workspace=workspace)
     result = pipeline.run(lead, job_id=job_id)
     if job_id:
         set_job_status(job_id, "complete", progress=1.0)

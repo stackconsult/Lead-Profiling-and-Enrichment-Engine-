@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
-from typing import Dict
+from typing import Dict, Optional
 
 from backend.agents.miner import Miner
 from backend.agents.synthesizer import Synthesizer
 from backend.agents.validator import Validator
+from backend.core.llm import LLMClient, LLMKeys
 from backend.core.valkey import set_job_status, valkey_client
 
 
@@ -14,11 +15,20 @@ class AgentPipeline:
     Orchestrates the miner, validator, and synthesizer steps.
     """
 
-    def __init__(self, workspace_id: str | None = None):
-        self.workspace_id = workspace_id
+    def __init__(self, workspace: Optional[Dict] = None):
+        self.workspace = workspace or {}
+        self.workspace_id = self.workspace.get("id")
         self.miner = Miner()
         self.validator = Validator()
         self.synthesizer = Synthesizer()
+        provider = self.workspace.get("provider") or "openai"
+        keys = LLMKeys(
+            provider=provider,
+            openai=self.workspace.get("openai_key"),
+            gemini=self.workspace.get("gemini_key"),
+            tavily=self.workspace.get("tavily_key"),
+        )
+        self.llm = LLMClient(keys)
 
     def run(self, lead: Dict, job_id: str | None = None) -> Dict:
         job_key = f"jobs:{job_id}" if job_id else None

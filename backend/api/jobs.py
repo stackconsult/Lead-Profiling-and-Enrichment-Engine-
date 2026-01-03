@@ -2,15 +2,25 @@ from __future__ import annotations
 
 import json
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from rq import Queue
 
+from backend.api.workspaces import get_workspace
 from backend.core.valkey import set_job_status, valkey_client
 from backend.worker import process_lead
 
 router = APIRouter(prefix="", tags=["jobs"])
+
+
+class LeadPayload(BaseModel):
+    company: Optional[str] = Field(default=None, description="Company name")
+    name: Optional[str] = None
+    id: Optional[str] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
 
 
 def _maybe_queue() -> Queue | None:
@@ -32,21 +42,26 @@ def _decode_map(data: Dict[Any, Any]) -> Dict[str, Any]:
 
 
 @router.post("/enqueue")
-async def enqueue(leads: List[Dict[str, Any]], workspace_id: str | None = None) -> Dict[str, str]:
+async def enqueue(
+    leads: List[LeadPayload],
+    workspace_id: str = Query(..., description="Workspace ID referencing stored keys"),
+) -> Dict[str, str]:
     if not leads:
         raise HTTPException(status_code=400, detail="No leads provided")
 
+    workspace = get_workspace(workspace_id)
     job_id = str(uuid.uuid4())
     set_job_status(job_id, "queued", progress=0.0)
+    valkey_client.hset(f"jobs:{job_id}", mapping={"workspace_id": workspace_id, "provider": workspace.get("provider", "")})
     queue = _maybe_queue()
 
     if queue:
         for lead in leads:
-            queue.enqueue(process_lead, lead, job_id, workspace_id)
+            queue.enqueue(process_lead, lead.model_dump(), job_id, workspace)
     else:
         # Fallback to inline processing (tests, local dev without Valkey)
         for lead in leads:
-            process_lead(lead, job_id, workspace_id)
+            process_lead(lead.model_dump(), job_id, workspace)
 
     return {"job_id": job_id}
 
@@ -82,17 +97,41 @@ async def leads(page: int = 1, size: int = 50) -> Dict[str, Any]:
 
 @router.get("/stream/{job_id}")
 async def stream(job_id: str):
-    from sse_starlette.sse import EventSourceResponse
     import asyncio
 
     async def event_generator():
-        for _ in range(120):  # up to ~60s if 0.5s sleep
+        pubsub = valkey_client.pubsub()
+        channel = f"jobs:{job_id}:events"
+        try:
+            pubsub.subscribe(channel)
+            # First emit current state if any
             data = valkey_client.hgetall(f"jobs:{job_id}")
             if data:
-                yield {"event": "message", "data": json.dumps(_decode_map(data))}
-                status = data.get("status") if isinstance(data, dict) else None
+                yield f"data: {json.dumps(_decode_map(data))}\n\n"
+                status = data.get("status")
                 if status in {b"complete", b"failed", "complete", "failed"}:
-                    break
-            await asyncio.sleep(0.5)
+                    return
+            # Then listen for updates
+            while True:
+                message = pubsub.get_message(timeout=1.0)
+                if message and message.get("type") == "message":
+                    payload = message.get("data")
+                    if isinstance(payload, (bytes, bytearray)):
+                        payload = payload.decode()
+                    if payload:
+                        yield f"data: {payload}\n\n"
+                        try:
+                            parsed = json.loads(payload)
+                            status = parsed.get("status")
+                            if status in {"complete", "failed"}:
+                                break
+                        except Exception:
+                            pass
+                await asyncio.sleep(0.2)
+        finally:
+            try:
+                pubsub.close()
+            except Exception:
+                pass
 
-    return EventSourceResponse(event_generator())
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
