@@ -20,6 +20,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/healthz")
+async def health_check():
+    """Health check endpoint for Render (legacy path)"""
+    try:
+        # Test Valkey connection
+        valkey_client.ping()
+        return {"status": "healthy", "valkey": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {e}")
+
+@app.get("/health")
+async def health_check_main():
+    """Main health check endpoint"""
+    try:
+        # Test Valkey connection
+        valkey_client.ping()
+        return {"status": "healthy", "valkey": "connected"}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {e}")
+
 
 def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
     import os
@@ -60,19 +80,27 @@ async def stream_job_updates(job_id: str):
                     yield f"data: {json.dumps(job)}\n\n"
                     last_status = current_status
                 
-                # Stop streaming if job is complete
-                if current_status in ['completed', 'failed']:
+                # Exit if job is complete
+                if current_status == 'complete':
                     break
                 
+                # Wait before next check
                 await asyncio.sleep(1)
                 
             except Exception as e:
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'detail': str(e)})}\n\n"
                 break
     
     return StreamingResponse(event_stream(), media_type="text/plain")
 
 
-app.include_router(jobs.router, dependencies=[Depends(verify_token)])
-app.include_router(workspaces.router, dependencies=[Depends(verify_token)])
+def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
+    import os
 
+    expected = os.getenv("API_TOKEN")
+    if expected and x_api_token != expected:
+        raise HTTPException(status_code=401, detail="invalid API token")
+
+
+app.include_router(jobs.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["jobs"])
+app.include_router(workspaces.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["workspaces"])
