@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_URL = os.getenv("API_URL", "http://localhost:10000")
+API_URL = os.getenv("API_URL", "https://lead-profiling-and-enrichment-engine.onrender.com")
 API_TOKEN = os.getenv("API_TOKEN", "")
 
 

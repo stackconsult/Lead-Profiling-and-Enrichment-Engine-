@@ -10,7 +10,7 @@ from components.job_monitor import stream_job
 
 load_dotenv()
 
-API_URL = os.getenv("API_URL", "http://localhost:10000")
+API_URL = os.getenv("API_URL", "https://lead-profiling-and-enrichment-engine.onrender.com")
 API_TOKEN = os.getenv("API_TOKEN", "")
 
 st.set_page_config(page_title="ProspectPulse", layout="wide", page_icon="🎯")
