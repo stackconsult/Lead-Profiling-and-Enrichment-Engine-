@@ -66,9 +66,13 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
     for key in keys:
         data = valkey_client.hgetall(key)
         if data:
+            # Extract workspace_id from "workspaces:{workspace_id}:keys"
             parts = str(key).split(":")
-            workspace_id = parts[1] if len(parts) > 2 else str(key)
-            items.append(_decode_map(data) | {"id": workspace_id})
+            workspace_id = parts[1] if len(parts) >= 3 else str(key)
+            decoded_data = _decode_map(data)
+            # Add the workspace_id to the decoded data
+            decoded_data["id"] = workspace_id
+            items.append(decoded_data)
     return {"items": items}
 
 
