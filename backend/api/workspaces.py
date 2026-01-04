@@ -59,22 +59,38 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
-    keys = [
-        k.decode() if isinstance(k, (bytes, bytearray)) else k
-        for k in valkey_client.keys("workspaces:*:keys")
-    ]
-    items: List[Dict[str, Any]] = []
-    for key in keys:
-        data = valkey_client.hgetall(key)
-        if data:
-            # Extract workspace_id from "workspaces:{workspace_id}:keys"
-            parts = str(key).split(":")
-            workspace_id = parts[1] if len(parts) >= 3 else str(key)
-            decoded_data = _decode_map(data)
-            # Add the workspace_id to the decoded data
-            decoded_data["id"] = workspace_id
-            items.append(decoded_data)
-    return {"items": items}
+    # Debug: Check what keys exist
+    try:
+        all_keys = valkey_client.keys("*")
+        workspace_keys = valkey_client.keys("workspaces:*:keys")
+        
+        print(f"DEBUG: All keys: {[k.decode() if isinstance(k, bytes) else k for k in all_keys]}")
+        print(f"DEBUG: Workspace keys: {[k.decode() if isinstance(k, bytes) else k for k in workspace_keys]}")
+        
+        keys = [
+            k.decode() if isinstance(k, (bytes, bytearray)) else k
+            for k in workspace_keys
+        ]
+        
+        items: List[Dict[str, Any]] = []
+        for key in keys:
+            data = valkey_client.hgetall(key)
+            print(f"DEBUG: Data for {key}: {data}")
+            if data:
+                # Extract workspace_id from "workspaces:{workspace_id}:keys"
+                parts = str(key).split(":")
+                workspace_id = parts[1] if len(parts) >= 3 else str(key)
+                decoded_data = _decode_map(data)
+                # Add the workspace_id to the decoded data
+                decoded_data["id"] = workspace_id
+                items.append(decoded_data)
+        
+        print(f"DEBUG: Final items: {items}")
+        return {"items": items}
+        
+    except Exception as e:
+        print(f"ERROR in list_workspaces: {e}")
+        raise HTTPException(status_code=500, detail=f"Workspace retrieval failed: {e}")
 
 
 @router.get("/workspaces/{workspace_id}")
