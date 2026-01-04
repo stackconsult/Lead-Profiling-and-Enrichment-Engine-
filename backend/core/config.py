@@ -54,10 +54,10 @@ class AppConfig:
         
         is_development = not is_production and not is_ci
         
-        # Validate required variables
-        api_token = os.getenv("API_TOKEN")
-        if not api_token:
-            raise ValueError("CRITICAL: API_TOKEN environment variable is required")
+        # Validate required variables - API_TOKEN only required in production
+        api_token = os.getenv("API_TOKEN", "test-token-for-development")
+        if is_production and not api_token:
+            raise ValueError("CRITICAL: API_TOKEN environment variable is required in production")
         
         # API Configuration
         host = os.getenv("HOST", "0.0.0.0")

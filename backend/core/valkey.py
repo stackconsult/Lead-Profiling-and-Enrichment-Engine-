@@ -38,6 +38,10 @@ def _build_pool() -> ConnectionPool:
 # Global connection pool - shared across this process
 _POOL: ConnectionPool = _build_pool()
 
+# Global FakeValkey instance for testing - shared across this process
+_FAKE_VALKEY: Optional[FakeValkey] = None
+
+
 def _is_ci_environment() -> bool:
     """Check if running in CI/testing environment"""
     return (
@@ -54,6 +58,8 @@ def _is_production_environment() -> bool:
 
 def get_client() -> Redis | FakeValkey:
     """Return a Redis/Valkey client - ALWAYS create fresh connection for reliability"""
+    global _FAKE_VALKEY
+    
     try:
         # Always create a fresh client to avoid cross-container issues
         client = redis.Redis(connection_pool=_POOL)
@@ -68,14 +74,20 @@ def get_client() -> Redis | FakeValkey:
             # In production, fail fast - no fallback
             raise RuntimeError(f"CRITICAL: Cannot start production app without working Valkey/Redis instance! Error: {e}")
         else:
-            # Development or CI mode - allow fallback
+            # Development or CI mode - allow fallback to singleton FakeValkey
             print("Falling back to FakeValkey for local development/testing")
-            return FakeValkey()
+            if _FAKE_VALKEY is None:
+                _FAKE_VALKEY = FakeValkey()
+            return _FAKE_VALKEY
     
     # Fallback for non-production
     if _is_production_environment():
         raise RuntimeError("CRITICAL: Unable to establish Valkey connection in production!")
-    return FakeValkey()
+    
+    # Return singleton FakeValkey for testing
+    if _FAKE_VALKEY is None:
+        _FAKE_VALKEY = FakeValkey()
+    return _FAKE_VALKEY
 
 
 # DO NOT initialize global client at import time - this causes startup failures
@@ -95,13 +107,33 @@ class FakeValkey:
         self.is_fake = True
 
     # Hash operations
-    def hset(self, name: str, mapping: Optional[Dict[str, object]] = None, **kwargs) -> None:
+    def hset(self, name: str, key: str = None, value: object = None, mapping: Optional[Dict[str, object]] = None, **kwargs) -> int:
+        """Set hash field value - supports both field/value and mapping syntax
+        Returns number of fields that were added (not updated)
+        """
         data = self.store.setdefault(name, {})
+        fields_added = 0
+        
+        # Support hset(name, field, value) syntax
+        if key is not None and value is not None:
+            if key not in data:
+                fields_added += 1
+            data[key] = value
+        
+        # Support hset(name, mapping={...}) syntax
         if mapping:
             for k, v in mapping.items():
+                if k not in data:
+                    fields_added += 1
                 data[k] = v
+        
+        # Support hset(name, field1=value1, field2=value2) syntax
         for k, v in kwargs.items():
+            if k not in data:
+                fields_added += 1
             data[k] = v
+        
+        return fields_added
 
     def hgetall(self, name: str) -> Dict[str, object]:
         return self.store.get(name, {}).copy()
@@ -132,16 +164,60 @@ class FakeValkey:
         return lst[start : end + 1]
 
     # Additional operations needed
-    def set(self, name: str, value: str) -> None:
+    def set(self, name: str, value: str, nx: bool = False, ex: int = None) -> bool:
+        """Set key with optional NX (not exists) and EX (expiry) flags"""
+        if nx and name in self.store:
+            return False  # Key exists, cannot set with NX
+        
         self.store[name] = {"value": value}
+        # Note: FakeValkey doesn't actually implement expiration for simplicity
+        return True
 
     def get(self, name: str) -> Optional[str]:
         data = self.store.get(name, {})
         return data.get("value")
 
-    def delete(self, name: str) -> None:
-        self.store.pop(name, None)
-        self._lists.pop(name, None)
+    def delete(self, name: str) -> int:
+        """Delete key and return number of keys deleted"""
+        count = 0
+        if name in self.store:
+            self.store.pop(name)
+            count += 1
+        if name in self._lists:
+            self._lists.pop(name)
+            count += 1
+        return count
+
+    def expire(self, name: str, seconds: int) -> bool:
+        """Set expiration on a key - FakeValkey doesn't implement actual expiration"""
+        # For testing, we just return True if the key exists
+        return name in self.store or name in self._lists
+
+    def ttl(self, name: str) -> int:
+        """Get time to live for key - FakeValkey returns -1 (no expiration)"""
+        if name in self.store or name in self._lists:
+            return -1  # No expiration set
+        return -2  # Key doesn't exist
+
+    def eval(self, script: str, num_keys: int, *keys_and_args) -> int:
+        """Execute Lua script - SIMPLIFIED implementation for FakeValkey
+        
+        NOTE: This is a minimal implementation specifically for lock release operations
+        used in distributed_workspaces.py. It does not support arbitrary Lua scripts.
+        For full Lua script support, use a real Redis/Valkey instance.
+        """
+        # For FakeValkey, we simplify the Lua script execution
+        # This is only used for lock release in distributed_workspaces.py
+        if num_keys > 0 and len(keys_and_args) >= num_keys + 1:
+            lock_key = keys_and_args[0]
+            lock_value = keys_and_args[num_keys]
+            
+            # Check if lock exists and matches the value
+            current_value = self.get(lock_key)
+            if current_value == lock_value:
+                self.delete(lock_key)
+                return 1
+        return 0
 
     # Pub/Sub minimal stubs
     def publish(self, channel: str, message: str) -> None:

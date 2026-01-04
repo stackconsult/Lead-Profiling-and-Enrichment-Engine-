@@ -184,7 +184,7 @@ class StressTestSuite:
                     ))
                     
                     # Clean up
-                    valkey_client.delete(key)
+                    client.delete(key)
                     
                 except Exception as e:
                     duration_ms = (time.time() - start_time) * 1000

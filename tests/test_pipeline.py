@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from backend.agents.pipeline import AgentPipeline
-from backend.core import valkey
+from backend.core.valkey import get_client
 
 
 def decode_map(data):
@@ -12,8 +12,9 @@ def decode_map(data):
 
 
 def setup_function():
-    if hasattr(valkey.valkey_client, "flushdb"):
-        valkey.valkey_client.flushdb()
+    client = get_client()
+    if hasattr(client, "flushdb"):
+        client.flushdb()
 
 
 def test_pipeline_runs_and_stores_lead():
@@ -22,7 +23,9 @@ def test_pipeline_runs_and_stores_lead():
     result = pipeline.run(lead, job_id="job-1")
 
     assert result["company"] == "Acme Corp"
-    stored = decode_map(valkey.valkey_client.hgetall(f"leads:{result['id']}"))
+    
+    client = get_client()
+    stored = decode_map(client.hgetall(f"leads:{result['id']}"))
     assert stored["company"] == "Acme Corp"
-    job = decode_map(valkey.valkey_client.hgetall("jobs:job-1"))
+    job = decode_map(client.hgetall("jobs:job-1"))
     assert job["status"] == "complete"
