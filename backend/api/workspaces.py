@@ -53,39 +53,56 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
         "gemini_key": payload.keys.gemini_key or "",
         "tavily_key": payload.keys.tavily_key or "",
     }
-    valkey_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
-    return {"workspace_id": workspace_id}
+    
+    # Force fresh connection for each write operation
+    from backend.core.valkey import get_client
+    fresh_client = get_client()
+    
+    try:
+        fresh_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
+        
+        # Verify it was stored
+        stored_data = fresh_client.hgetall(f"workspaces:{workspace_id}:keys")
+        if not stored_data:
+            raise Exception("Failed to store workspace data")
+            
+        print(f"SUCCESS: Stored workspace {workspace_id}")
+        return {"workspace_id": workspace_id}
+        
+    except Exception as e:
+        print(f"ERROR storing workspace {workspace_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to store workspace: {e}")
 
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
-    # Debug: Check what keys exist
+    # Force fresh connection for each read operation
+    from backend.core.valkey import get_client
+    fresh_client = get_client()
+    
     try:
-        all_keys = valkey_client.keys("*")
-        workspace_keys = valkey_client.keys("workspaces:*:keys")
+        # Get all workspace keys
+        workspace_keys = fresh_client.keys("workspaces:*:keys")
         
-        print(f"DEBUG: All keys: {[k.decode() if isinstance(k, bytes) else k for k in all_keys]}")
-        print(f"DEBUG: Workspace keys: {[k.decode() if isinstance(k, bytes) else k for k in workspace_keys]}")
-        
-        keys = [
-            k.decode() if isinstance(k, (bytes, bytearray)) else k
-            for k in workspace_keys
-        ]
+        print(f"DEBUG: Found {len(workspace_keys)} workspace keys")
         
         items: List[Dict[str, Any]] = []
-        for key in keys:
-            data = valkey_client.hgetall(key)
-            print(f"DEBUG: Data for {key}: {data}")
+        for key in workspace_keys:
+            key_str = key.decode() if isinstance(key, (bytes, bytearray)) else key
+            data = fresh_client.hgetall(key)
+            
             if data:
                 # Extract workspace_id from "workspaces:{workspace_id}:keys"
-                parts = str(key).split(":")
-                workspace_id = parts[1] if len(parts) >= 3 else str(key)
+                parts = key_str.split(":")
+                workspace_id = parts[1] if len(parts) >= 3 else key_str
+                
                 decoded_data = _decode_map(data)
-                # Add the workspace_id to the decoded data
                 decoded_data["id"] = workspace_id
                 items.append(decoded_data)
+                
+                print(f"SUCCESS: Found workspace {workspace_id}")
         
-        print(f"DEBUG: Final items: {items}")
+        print(f"DEBUG: Returning {len(items)} workspaces")
         return {"items": items}
         
     except Exception as e:
