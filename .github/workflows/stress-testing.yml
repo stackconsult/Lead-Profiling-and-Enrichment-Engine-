@@ -50,8 +50,6 @@ jobs:
     
     - name: Start API server
       run: |
-        export ENV=production
-        export PYTHON_ENV=production
         export API_TOKEN=test-token-123
         export VALKEY_HOST=localhost
         export VALKEY_PORT=6379
@@ -90,8 +88,6 @@ jobs:
     
     - name: Start API server
       run: |
-        export ENV=production
-        export PYTHON_ENV=production
         export API_TOKEN=test-token-123
         export VALKEY_HOST=localhost
         export VALKEY_PORT=6379
@@ -130,8 +126,6 @@ jobs:
     
     - name: Start API server
       run: |
-        export ENV=production
-        export PYTHON_ENV=production
         export API_TOKEN=test-token-123
         export VALKEY_HOST=localhost
         export VALKEY_PORT=6379
@@ -170,8 +164,6 @@ jobs:
     
     - name: Start API server
       run: |
-        export ENV=production
-        export PYTHON_ENV=production
         export API_TOKEN=test-token-123
         export VALKEY_HOST=localhost
         export VALKEY_PORT=6379

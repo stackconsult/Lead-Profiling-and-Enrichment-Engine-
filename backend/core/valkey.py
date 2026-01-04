@@ -50,27 +50,33 @@ def get_client() -> Redis | FakeValkey:
     except Exception as e:
         print(f"Valkey connection failed: {e}")
         
-        # Check if we're in production environment
+        # Check if we're in production environment (NOT CI/testing)
+        is_ci = (
+            os.getenv("CI") == "true" or
+            os.getenv("GITHUB_ACTIONS") == "true" or
+            os.getenv("CIRCLECI") == "true"
+        )
+        
         is_production = (
-            os.getenv("RENDER_SERVICE_ID") or  # We're on Render
-            os.getenv("ENV") == "production" or
-            os.getenv("PYTHON_ENV") == "production"
+            os.getenv("RENDER_SERVICE_ID") and  # We're on Render
+            not is_ci  # And not in CI
         )
         
         if is_production:
             # In production, fail fast - no fallback
             raise RuntimeError(f"CRITICAL: Cannot start production app without working Valkey/Redis instance! Error: {e}")
         else:
-            # Development mode - allow fallback
-            print("Falling back to FakeValkey for local development")
+            # Development or CI mode - allow fallback
+            print("Falling back to FakeValkey for local development/testing")
             return FakeValkey()
     
     # Fallback for non-production
-    is_production = (
-        os.getenv("RENDER_SERVICE_ID") or
-        os.getenv("ENV") == "production" or
-        os.getenv("PYTHON_ENV") == "production"
+    is_ci = (
+        os.getenv("CI") == "true" or
+        os.getenv("GITHUB_ACTIONS") == "true"
     )
+    
+    is_production = os.getenv("RENDER_SERVICE_ID") and not is_ci
     
     if is_production:
         raise RuntimeError("CRITICAL: Unable to establish Valkey connection in production!")

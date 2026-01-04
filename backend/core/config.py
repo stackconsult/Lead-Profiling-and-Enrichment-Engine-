@@ -18,6 +18,7 @@ class AppConfig:
     python_env: str
     is_production: bool
     is_development: bool
+    is_ci: bool  # CI/testing environment
     
     # API
     api_token: str
@@ -41,13 +42,17 @@ class AppConfig:
         python_env = os.getenv("PYTHON_ENV", "development")
         render_service_id = os.getenv("RENDER_SERVICE_ID")
         
-        is_production = (
-            render_service_id or
-            env == "production" or
-            python_env == "production"
+        # Detect CI/testing environment (GitHub Actions, CircleCI, etc.)
+        is_ci = (
+            os.getenv("CI") == "true" or
+            os.getenv("GITHUB_ACTIONS") == "true" or
+            os.getenv("CIRCLECI") == "true"
         )
         
-        is_development = not is_production
+        # Production is only when deployed on Render, NOT during CI tests
+        is_production = bool(render_service_id) and not is_ci
+        
+        is_development = not is_production and not is_ci
         
         # Validate required variables
         api_token = os.getenv("API_TOKEN")
@@ -63,6 +68,7 @@ class AppConfig:
         valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
         valkey_url = os.getenv("VALKEY_URL")
         
+        # Only validate Valkey in true production (not CI/testing)
         if is_production and not valkey_url and (valkey_host == "localhost" or valkey_host == "127.0.0.1"):
             raise ValueError(
                 "CRITICAL: In production, VALKEY_URL must be set to a real Redis/Valkey instance, "
@@ -74,6 +80,7 @@ class AppConfig:
             python_env=python_env,
             is_production=is_production,
             is_development=is_development,
+            is_ci=is_ci,
             api_token=api_token,
             host=host,
             port=port,
@@ -85,6 +92,7 @@ class AppConfig:
     
     def validate_for_startup(self) -> None:
         """Validate configuration for application startup"""
+        # Only enforce strict validation in true production (not CI/testing)
         if self.is_production:
             if not self.valkey_url and (self.valkey_host in ["localhost", "127.0.0.1"]):
                 raise ValueError(
@@ -97,6 +105,10 @@ class AppConfig:
                     "CRITICAL: Production startup requires real API token. "
                     "Current token appears to be a placeholder."
                 )
+        
+        # In CI, just log the configuration
+        if self.is_ci:
+            print(f"ℹ️ Running in CI/test mode (production validations relaxed)")
 
 
 # Global configuration instance
