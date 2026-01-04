@@ -58,13 +58,25 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
-    keys = [
+    # Debug: Log all keys found
+    all_keys = [
+        k.decode() if isinstance(k, (bytes, bytearray)) else k
+        for k in valkey_client.keys("*")
+    ]
+    workspace_keys = [
         k.decode() if isinstance(k, (bytes, bytearray)) else k
         for k in valkey_client.keys("workspaces:*:keys")
     ]
+    
+    # Debug logging
+    print(f"DEBUG: All keys in Valkey: {all_keys}")
+    print(f"DEBUG: Workspace keys found: {workspace_keys}")
+    
+    keys = workspace_keys
     items: List[Dict[str, Any]] = []
     for key in keys:
         data = valkey_client.hgetall(key)
+        print(f"DEBUG: Data for key {key}: {data}")
         if data:
             # Extract workspace_id from "workspaces:{workspace_id}:keys"
             parts = str(key).split(":")
