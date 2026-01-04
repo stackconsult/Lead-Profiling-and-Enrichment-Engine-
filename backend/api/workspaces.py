@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import time
+import json
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +47,98 @@ def get_workspace(workspace_id: str) -> Dict[str, str]:
     decoded = _decode_map(data)
     decoded["id"] = workspace_id
     return decoded
+
+
+@router.get("/workspaces/debug")
+async def debug_workspace_storage(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Debug endpoint to diagnose workspace storage issues"""
+    verify_token(x_api_token)
+    
+    try:
+        # Test basic Valkey operations
+        client = get_client()
+        
+        # Test 1: Basic SET/GET
+        test_key = f"debug-test-{int(time.time())}"
+        test_value = json.dumps({"test": True, "timestamp": time.time()})
+        
+        client.set(test_key, test_value)
+        retrieved = client.get(test_key)
+        client.delete(test_key)
+        
+        basic_test_passed = retrieved == test_value
+        
+        # Test 2: Hash operations
+        hash_key = f"debug-hash-{int(time.time())}"
+        hash_data = {"field1": "value1", "field2": "value2"}
+        
+        client.hset(hash_key, mapping=hash_data)
+        hash_retrieved = client.hgetall(hash_key)
+        client.delete(hash_key)
+        
+        hash_test_passed = len(hash_retrieved) == 2
+        
+        # Test 3: Workspace pattern
+        workspace_id = f"debug-workspace-{int(time.time())}"
+        workspace_key = f"workspaces:{workspace_id}:keys"
+        workspace_data = {
+            "provider": "openai",
+            "openai_key": "sk-test",
+            "gemini_key": "",
+            "tavily_key": ""
+        }
+        
+        client.hset(workspace_key, mapping=workspace_data)
+        workspace_retrieved = client.hgetall(workspace_key)
+        
+        # Check all keys
+        all_keys = client.keys("*")
+        workspace_keys = client.keys("workspaces:*:keys")
+        
+        # Clean up
+        client.delete(workspace_key)
+        
+        workspace_test_passed = len(workspace_retrieved) == 4
+        
+        return {
+            "basic_set_get_test": {
+                "passed": basic_test_passed,
+                "expected": test_value,
+                "got": retrieved
+            },
+            "hash_operations_test": {
+                "passed": hash_test_passed,
+                "expected_fields": 2,
+                "got_fields": len(hash_retrieved)
+            },
+            "workspace_pattern_test": {
+                "passed": workspace_test_passed,
+                "expected_fields": 4,
+                "got_fields": len(workspace_retrieved)
+            },
+            "key_analysis": {
+                "total_keys": len(all_keys),
+                "workspace_keys": len(workspace_keys),
+                "all_keys_sample": [k.decode() if isinstance(k, bytes) else k for k in all_keys[:10]],
+                "workspace_keys_sample": [k.decode() if isinstance(k, bytes) else k for k in workspace_keys[:5]]
+            },
+            "client_info": {
+                "client_type": str(type(client)),
+                "is_fake": hasattr(client, 'is_fake'),
+                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
+                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "client_info": {
+                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
+                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
+            }
+        }
 
 
 @router.post("/workspaces")
