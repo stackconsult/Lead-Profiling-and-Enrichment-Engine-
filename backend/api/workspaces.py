@@ -54,15 +54,12 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
         "tavily_key": payload.keys.tavily_key or "",
     }
     
-    # Force fresh connection for each write operation
-    from backend.core.valkey import get_client
-    fresh_client = get_client()
-    
     try:
-        fresh_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
+        # Use the global valkey client directly
+        valkey_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
         
         # Verify it was stored
-        stored_data = fresh_client.hgetall(f"workspaces:{workspace_id}:keys")
+        stored_data = valkey_client.hgetall(f"workspaces:{workspace_id}:keys")
         if not stored_data:
             raise Exception("Failed to store workspace data")
             
@@ -76,20 +73,16 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
-    # Force fresh connection for each read operation
-    from backend.core.valkey import get_client
-    fresh_client = get_client()
-    
     try:
-        # Get all workspace keys
-        workspace_keys = fresh_client.keys("workspaces:*:keys")
+        # Use the global valkey client directly
+        workspace_keys = valkey_client.keys("workspaces:*:keys")
         
         print(f"DEBUG: Found {len(workspace_keys)} workspace keys")
         
         items: List[Dict[str, Any]] = []
         for key in workspace_keys:
             key_str = key.decode() if isinstance(key, (bytes, bytearray)) else key
-            data = fresh_client.hgetall(key)
+            data = valkey_client.hgetall(key)
             
             if data:
                 # Extract workspace_id from "workspaces:{workspace_id}:keys"
