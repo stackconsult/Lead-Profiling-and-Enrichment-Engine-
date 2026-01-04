@@ -4,12 +4,14 @@ import os
 import time
 import json
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
 
 from backend.core.distributed_workspaces import distributed_workspace_manager
+from backend.core.workspace_investigator import workspace_investigator
 
 
 router = APIRouter(prefix="", tags=["workspaces"])
@@ -123,6 +125,53 @@ async def delete_workspace(workspace_id: str, x_api_token: Optional[str] = Heade
         if "not found" in str(e):
             raise HTTPException(status_code=404, detail="workspace not found")
         raise HTTPException(status_code=500, detail=f"Failed to delete workspace: {e}")
+
+
+@router.get("/workspaces/investigate")
+async def investigate_workspace_issue(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Comprehensive investigation of workspace listing issue"""
+    verify_token(x_api_token)
+    
+    try:
+        print("Starting comprehensive workspace investigation...")
+        
+        # Run full investigation
+        results = workspace_investigator.run_full_investigation()
+        
+        # Add summary analysis
+        analysis = {
+            'overall_health': 'HEALTHY' if results['valkey_connection'].get('ping', {}).get('success') else 'UNHEALTHY',
+            'creation_working': results['workspace_creation'].get('direct_storage', {}).get('set_success', False),
+            'listing_working': len(results['workspace_listing'].get('direct_listing', {}).get('workspace_data', [])) > 0,
+            'consistency_working': results['cross_container_consistency'].get('connection_consistency', {}).get('consistent_reads', False),
+            'issues_identified': []
+        }
+        
+        # Identify specific issues
+        if not results['valkey_connection'].get('ping', {}).get('success'):
+            analysis['issues_identified'].append('Valkey connection failure')
+        
+        if not results['workspace_creation'].get('direct_storage', {}).get('set_success'):
+            analysis['issues_identified'].append('Workspace creation failure')
+        
+        if len(results['workspace_listing'].get('direct_listing', {}).get('workspace_data', [])) == 0:
+            analysis['issues_identified'].append('Workspace listing returns empty')
+        
+        if not results['cross_container_consistency'].get('connection_consistency', {}).get('consistent_reads'):
+            analysis['issues_identified'].append('Cross-container consistency issues')
+        
+        results['analysis'] = analysis
+        
+        print("Investigation completed successfully")
+        return results
+        
+    except Exception as e:
+        print(f"Investigation failed: {e}")
+        return {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.utcnow().isoformat()
+        }
 
 
 @router.get("/workspaces/debug")
