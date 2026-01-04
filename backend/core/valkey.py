@@ -162,20 +162,22 @@ class FakeValkey:
         return True
 
 
-valkey_client: Redis | FakeValkey = get_client()
+# DO NOT initialize global client at import time - this causes startup failures
+# valkey_client: Redis | FakeValkey = get_client()  # REMOVED - causes import-time connection
 
 
 def set_job_status(job_id: str, status: str, progress: float | None = None, error: Optional[str] = None) -> None:
-    """Helper to update common job fields."""
+    """Helper to update common fields."""
+    client = get_client()  # Use fresh client instead of global
     mapping = {"status": status}
     if progress is not None:
         mapping["progress"] = progress
     if error:
         mapping["error"] = error
-    valkey_client.hset(f"jobs:{job_id}", mapping=mapping)
+    client.hset(f"jobs:{job_id}", mapping=mapping)
     try:
         payload = json.dumps(mapping)
-        valkey_client.publish(f"jobs:{job_id}:events", payload)
+        client.publish(f"jobs:{job_id}:events", payload)
     except Exception:
-        # Best-effort publish
+        pass# Best-effort publish
         pass
