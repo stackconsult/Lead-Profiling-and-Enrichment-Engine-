@@ -102,6 +102,6 @@ def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="invalid API token")
 
 
-app.include_router(jobs.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["jobs"])
-app.include_router(workspaces.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["workspaces"])
-app.include_router(enterprise.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["enterprise"])
+app.include_router(jobs.router, prefix="/api", tags=["jobs"])
+app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
+app.include_router(enterprise.router, prefix="/api", tags=["enterprise"])
