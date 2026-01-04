@@ -52,60 +52,19 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
         "gemini_key": payload.keys.gemini_key or "",
         "tavily_key": payload.keys.tavily_key or "",
     }
-    
-    # Debug: Log what we're storing
-    print(f"DEBUG: Storing workspace {workspace_id} with mapping: {mapping}")
-    print(f"DEBUG: Valkey client type: {type(valkey_client)}")
-    print(f"DEBUG: Is fake valkey: {hasattr(valkey_client, 'is_fake')}")
-    
     valkey_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
-    
-    # Debug: Verify it was stored
-    stored_data = valkey_client.hgetall(f"workspaces:{workspace_id}:keys")
-    print(f"DEBUG: Retrieved stored data: {stored_data}")
-    
     return {"workspace_id": workspace_id}
 
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
-    # Check if we're using fake or real valkey
-    is_fake = hasattr(valkey_client, 'is_fake')
-    
-    # Force reconnection if using fake valkey
-    if is_fake:
-        print("WARNING: Using FakeValkey - data will not persist!")
-        # Try to get a real connection
-        from backend.core.valkey import get_client
-        global valkey_client
-        valkey_client = get_client()
-        is_fake = hasattr(valkey_client, 'is_fake')
-    
-    # Debug: Log all keys found
-    all_keys = [
-        k.decode() if isinstance(k, (bytes, bytearray)) else k
-        for k in valkey_client.keys("*")
-    ]
-    workspace_keys = [
+    keys = [
         k.decode() if isinstance(k, (bytes, bytearray)) else k
         for k in valkey_client.keys("workspaces:*:keys")
     ]
-    
-    print(f"DEBUG: is_fake={is_fake}, all_keys={all_keys}, workspace_keys={workspace_keys}")
-    
-    # Return debug info temporarily
-    debug_info = {
-        "is_fake_valkey": is_fake,
-        "all_keys": all_keys,
-        "workspace_keys": workspace_keys,
-        "items": []
-    }
-    
-    keys = workspace_keys
     items: List[Dict[str, Any]] = []
     for key in keys:
         data = valkey_client.hgetall(key)
-        print(f"DEBUG: Data for key {key}: {data}")
         if data:
             # Extract workspace_id from "workspaces:{workspace_id}:keys"
             parts = str(key).split(":")
@@ -114,9 +73,7 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
             # Add the workspace_id to the decoded data
             decoded_data["id"] = workspace_id
             items.append(decoded_data)
-    
-    debug_info["items"] = items
-    return debug_info
+    return {"items": items}
 
 
 @router.get("/workspaces/{workspace_id}")

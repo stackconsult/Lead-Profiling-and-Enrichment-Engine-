@@ -117,17 +117,37 @@ class FakeValkey:
         return True
 
 
+# Global client instance to ensure consistency across requests
+_valkey_client: Redis | FakeValkey | None = None
+
 def get_client() -> Redis | FakeValkey:
     """Return a Redis/Valkey client backed by the shared connection pool."""
+    global _valkey_client
+    
+    if _valkey_client is not None:
+        # Return existing client if it's still connected
+        try:
+            if hasattr(_valkey_client, 'ping'):
+                _valkey_client.ping()
+                return _valkey_client
+        except Exception:
+            # Connection failed, reset and try again
+            _valkey_client = None
+    
+    # Create new client
     client = redis.Redis(connection_pool=_POOL)
     try:
         result = client.ping()
         if result:
+            _valkey_client = client
             return client
     except Exception as e:
         print(f"Valkey connection failed: {e}, falling back to FakeValkey")
-        return FakeValkey()
-    return FakeValkey()
+        _valkey_client = FakeValkey()
+        return _valkey_client
+    
+    _valkey_client = FakeValkey()
+    return _valkey_client
 
 
 valkey_client: Redis | FakeValkey = get_client()
