@@ -1,0 +1,51 @@
+name: Stress Testing & Reliability Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      test_type:
+        description: 'Type of test to run'
+        required: true
+        default: 'health'
+        type: choice
+        options:
+        - health
+        - stress
+        - load
+        - reliability
+        - all
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r backend/requirements.txt
+        pip install pytest pytest-asyncio
+    
+    - name: Start API server
+      run: |
+        export API_TOKEN=test-token-123
+        export VALKEY_HOST=localhost
+        export VALKEY_PORT=6379
+        uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+    
+    - name: Run health check
+      run: |
+        python tests/run_tests.py --api-url http://localhost:8000 --api-token test-token-123 --test-type health
