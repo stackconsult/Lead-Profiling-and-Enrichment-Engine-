@@ -25,6 +25,16 @@ on:
 jobs:
   health-check:
     runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     steps:
     - uses: actions/checkout@v4
     
@@ -49,3 +59,155 @@ jobs:
     - name: Run health check
       run: |
         python tests/simple_health_check.py --api-url http://localhost:8000 --api-token test-token-123
+
+  stress-test:
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r backend/requirements.txt
+        pip install pytest pytest-asyncio
+    
+    - name: Start API server
+      run: |
+        export API_TOKEN=test-token-123
+        export VALKEY_HOST=localhost
+        export VALKEY_PORT=6379
+        uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+    
+    - name: Run stress tests
+      run: |
+        python tests/run_tests.py --api-url http://localhost:8000 --api-token test-token-123 --test-type stress
+
+  load-test:
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r backend/requirements.txt
+        pip install pytest pytest-asyncio
+    
+    - name: Start API server
+      run: |
+        export API_TOKEN=test-token-123
+        export VALKEY_HOST=localhost
+        export VALKEY_PORT=6379
+        uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+    
+    - name: Run load tests
+      run: |
+        python tests/run_tests.py --api-url http://localhost:8000 --api-token test-token-123 --test-type load
+
+  reliability-monitor:
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="valkey-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r backend/requirements.txt
+        pip install pytest pytest-asyncio
+    
+    - name: Start API server
+      run: |
+        export API_TOKEN=test-token-123
+        export VALKEY_HOST=localhost
+        export VALKEY_PORT=6379
+        uvicorn backend.api.main:app --host 0.0.0.0 --port 8000 &
+        sleep 10
+    
+    - name: Run reliability monitoring
+      run: |
+        python tests/run_tests.py --api-url http://localhost:8000 --api-token test-token-123 --test-type reliability --duration 60
+
+  performance-report:
+    runs-on: ubuntu-latest
+    needs: [health-check, stress-test, load-test, reliability-monitor]
+    if: always()
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      continue-on-error: true
+    
+    - name: Generate performance report
+      run: |
+        echo "# Performance Report" > performance_report.md
+        echo "Generated on: $(date)" >> performance_report.md
+        echo "" >> performance_report.md
+        echo "## Test Results Summary" >> performance_report.md
+        echo "- Health Check: ${{ needs.health-check.result }}" >> performance_report.md
+        echo "- Stress Test: ${{ needs.stress-test.result }}" >> performance_report.md
+        echo "- Load Test: ${{ needs.load-test.result }}" >> performance_report.md
+        echo "- Reliability Monitor: ${{ needs.reliability-monitor.result }}" >> performance_report.md
+    
+    - name: Upload performance report
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-report
+        path: performance_report.md
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [health-check, stress-test, load-test, reliability-monitor]
+    if: failure()
+    steps:
+    - name: Notify on failure
+      run: |
+        echo "One or more tests failed. Check the job logs for details."
+        echo "Health Check: ${{ needs.health-check.result }}"
+        echo "Stress Test: ${{ needs.stress-test.result }}"
+        echo "Load Test: ${{ needs.load-test.result }}"
+        echo "Reliability Monitor: ${{ needs.reliability-monitor.result }}"
