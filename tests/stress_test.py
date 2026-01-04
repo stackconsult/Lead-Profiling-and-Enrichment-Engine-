@@ -14,7 +14,6 @@ from dataclasses import dataclass
 import statistics
 
 import httpx
-import pytest
 from backend.core.valkey import get_client
 from backend.agents.pipeline import AgentPipeline
 from backend.core.llm import LLMClient, LLMKeys

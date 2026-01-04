@@ -7,7 +7,7 @@ from backend.agents.miner import Miner
 from backend.agents.synthesizer import Synthesizer
 from backend.agents.validator import Validator
 from backend.core.llm import LLMClient, LLMKeys
-from backend.core.valkey import set_job_status, valkey_client
+from backend.core.valkey import set_job_status, get_client
 
 
 class AgentPipeline:
@@ -71,10 +71,11 @@ class AgentPipeline:
                 **synthesized
             }
             
-            valkey_client.hset(f"leads:{lead_id}", mapping=result_data)
+            client = get_client()
+            client.hset(f"leads:{lead_id}", mapping=result_data)
             
             if job_id:
-                valkey_client.lpush(f"{job_key}:leads", lead_id)
+                client.lpush(f"{job_key}:leads", lead_id)
                 set_job_status(job_id, "completed", progress=1.0)
             
             return {"id": lead_id, **synthesized}
