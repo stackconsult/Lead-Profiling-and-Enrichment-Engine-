@@ -2,7 +2,9 @@ name: Keep Render Alive
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    # Run every 5 minutes to keep the free Render deployment alive
+    # (Render free tier spins down after 15 minutes of inactivity)
+    - cron: "*/5 * * * *"
 
 jobs:
   ping:
