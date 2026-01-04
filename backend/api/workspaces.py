@@ -58,6 +58,9 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
 
 @router.get("/workspaces")
 async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
+    # Check if we're using fake or real valkey
+    is_fake = hasattr(valkey_client, 'is_fake')
+    
     # Debug: Log all keys found
     all_keys = [
         k.decode() if isinstance(k, (bytes, bytearray)) else k
@@ -70,6 +73,7 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
     
     # Return debug info temporarily
     debug_info = {
+        "is_fake_valkey": is_fake,
         "all_keys": all_keys,
         "workspace_keys": workspace_keys,
         "items": []
