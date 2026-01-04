@@ -3,12 +3,13 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from backend.api.main import app
-from backend.core import valkey
+from backend.core.valkey import get_client
 
 
 def setup_function():
-    if hasattr(valkey.valkey_client, "flushdb"):
-        valkey.valkey_client.flushdb()
+    client = get_client()
+    if hasattr(client, "flushdb"):
+        client.flushdb()
 
 
 def test_enqueue_and_status_and_leads():

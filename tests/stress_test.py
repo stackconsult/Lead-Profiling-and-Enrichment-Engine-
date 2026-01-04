@@ -15,7 +15,7 @@ import statistics
 
 import httpx
 import pytest
-from backend.core.valkey import valkey_client, get_client
+from backend.core.valkey import get_client
 from backend.agents.pipeline import AgentPipeline
 from backend.core.llm import LLMClient, LLMKeys
 
@@ -166,12 +166,13 @@ class StressTestSuite:
                 # Test SET operation
                 start_time = time.time()
                 try:
-                    valkey_client.set(key, value)
+                    client = get_client()
+                    client.set(key, value)
                     set_duration = (time.time() - start_time) * 1000
                     
                     # Test GET operation
                     get_start = time.time()
-                    retrieved = valkey_client.get(key)
+                    retrieved = client.get(key)
                     get_duration = (time.time() - get_start) * 1000
                     
                     total_duration = set_duration + get_duration

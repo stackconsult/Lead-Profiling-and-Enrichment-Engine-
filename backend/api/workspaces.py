@@ -83,6 +83,17 @@ async def list_workspaces(x_api_token: Optional[str] = Header(default=None)) -> 
         raise HTTPException(status_code=500, detail=f"Failed to list workspaces: {e}")
 
 
+def get_workspace_internal(workspace_id: str) -> Dict[str, Any]:
+    """Internal function to get workspace without authentication"""
+    try:
+        # Use distributed workspace manager for consistency
+        result = distributed_workspace_manager.get_workspace_distributed(workspace_id)
+        return result
+    except Exception as e:
+        print(f"ERROR getting workspace {workspace_id}: {e}")
+        raise Exception(f"Failed to get workspace: {e}")
+
+
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace_detail(workspace_id: str, x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
     """Get workspace with distributed consistency"""
