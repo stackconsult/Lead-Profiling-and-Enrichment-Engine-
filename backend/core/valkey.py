@@ -107,22 +107,33 @@ class FakeValkey:
         self.is_fake = True
 
     # Hash operations
-    def hset(self, name: str, key: str = None, value: str = None, mapping: Optional[Dict[str, object]] = None, **kwargs) -> None:
-        """Set hash field value - supports both field/value and mapping syntax"""
+    def hset(self, name: str, key: str = None, value: object = None, mapping: Optional[Dict[str, object]] = None, **kwargs) -> int:
+        """Set hash field value - supports both field/value and mapping syntax
+        Returns number of fields that were added (not updated)
+        """
         data = self.store.setdefault(name, {})
+        fields_added = 0
         
         # Support hset(name, field, value) syntax
         if key is not None and value is not None:
+            if key not in data:
+                fields_added += 1
             data[key] = value
         
         # Support hset(name, mapping={...}) syntax
         if mapping:
             for k, v in mapping.items():
+                if k not in data:
+                    fields_added += 1
                 data[k] = v
         
         # Support hset(name, field1=value1, field2=value2) syntax
         for k, v in kwargs.items():
+            if k not in data:
+                fields_added += 1
             data[k] = v
+        
+        return fields_added
 
     def hgetall(self, name: str) -> Dict[str, object]:
         return self.store.get(name, {}).copy()
@@ -157,6 +168,7 @@ class FakeValkey:
         """Set key with optional NX (not exists) and EX (expiry) flags"""
         if nx and name in self.store:
             return False  # Key exists, cannot set with NX
+        
         self.store[name] = {"value": value}
         # Note: FakeValkey doesn't actually implement expiration for simplicity
         return True
@@ -188,9 +200,14 @@ class FakeValkey:
         return -2  # Key doesn't exist
 
     def eval(self, script: str, num_keys: int, *keys_and_args) -> int:
-        """Execute Lua script - simplified for lock release"""
+        """Execute Lua script - SIMPLIFIED implementation for FakeValkey
+        
+        NOTE: This is a minimal implementation specifically for lock release operations
+        used in distributed_workspaces.py. It does not support arbitrary Lua scripts.
+        For full Lua script support, use a real Redis/Valkey instance.
+        """
         # For FakeValkey, we simplify the Lua script execution
-        # This is only used for lock release
+        # This is only used for lock release in distributed_workspaces.py
         if num_keys > 0 and len(keys_and_args) >= num_keys + 1:
             lock_key = keys_and_args[0]
             lock_value = keys_and_args[num_keys]
