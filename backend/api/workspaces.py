@@ -52,7 +52,18 @@ async def add_workspace(payload: WorkspaceCreate) -> Dict[str, str]:
         "gemini_key": payload.keys.gemini_key or "",
         "tavily_key": payload.keys.tavily_key or "",
     }
+    
+    # Debug: Log what we're storing
+    print(f"DEBUG: Storing workspace {workspace_id} with mapping: {mapping}")
+    print(f"DEBUG: Valkey client type: {type(valkey_client)}")
+    print(f"DEBUG: Is fake valkey: {hasattr(valkey_client, 'is_fake')}")
+    
     valkey_client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
+    
+    # Debug: Verify it was stored
+    stored_data = valkey_client.hgetall(f"workspaces:{workspace_id}:keys")
+    print(f"DEBUG: Retrieved stored data: {stored_data}")
+    
     return {"workspace_id": workspace_id}
 
 

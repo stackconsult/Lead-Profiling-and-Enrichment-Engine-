@@ -121,10 +121,13 @@ def get_client() -> Redis | FakeValkey:
     """Return a Redis/Valkey client backed by the shared connection pool."""
     client = redis.Redis(connection_pool=_POOL)
     try:
-        client.ping()
-        return client
-    except Exception:
+        result = client.ping()
+        if result:
+            return client
+    except Exception as e:
+        print(f"Valkey connection failed: {e}, falling back to FakeValkey")
         return FakeValkey()
+    return FakeValkey()
 
 
 valkey_client: Redis | FakeValkey = get_client()
