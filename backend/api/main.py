@@ -71,6 +71,6 @@ async def health() -> Dict[str, str]:
         return {"status": "degraded", "detail": str(exc)}
 
 
-app.include_router(jobs.router, tags=["jobs"])
-app.include_router(workspaces.router, tags=["workspaces"])
+app.include_router(jobs.router, prefix="/api", tags=["jobs"])
+app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
 app.include_router(enterprise.router, tags=["enterprise"])

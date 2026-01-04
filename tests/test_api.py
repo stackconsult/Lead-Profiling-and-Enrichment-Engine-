@@ -15,22 +15,22 @@ def setup_function():
 def test_enqueue_and_status_and_leads():
     client = TestClient(app)
     ws_resp = client.post(
-        "/workspaces",
+        "/api/workspaces",
         json={"provider": "openai", "keys": {"openai_key": "", "gemini_key": "", "tavily_key": ""}},
     )
     assert ws_resp.status_code == 200
     workspace_id = ws_resp.json()["workspace_id"]
 
     leads = [{"company": "Acme Corp"}, {"company": "Beta LLC"}]
-    resp = client.post(f"/enqueue?workspace_id={workspace_id}", json=leads)
+    resp = client.post(f"/api/enqueue?workspace_id={workspace_id}", json=leads)
     assert resp.status_code == 200
     job_id = resp.json()["job_id"]
 
-    status = client.get(f"/status/{job_id}")
+    status = client.get(f"/api/status/{job_id}")
     assert status.status_code == 200
     assert status.json()["status"] == "complete"
 
-    leads_resp = client.get("/leads")
+    leads_resp = client.get("/api/leads")
     assert leads_resp.status_code == 200
     items = leads_resp.json()["items"]
     assert len(items) == 2
