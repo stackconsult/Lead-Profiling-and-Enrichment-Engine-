@@ -49,16 +49,31 @@ def get_client() -> Redis | FakeValkey:
             return client
     except Exception as e:
         print(f"Valkey connection failed: {e}")
-        # In production, we should fail rather than use FakeValkey
-        if os.getenv("RENDER_SERVICE_ID"):  # We're on Render
-            raise Exception(f"Valkey connection required in production: {e}")
+        
+        # Check if we're in production environment
+        is_production = (
+            os.getenv("RENDER_SERVICE_ID") or  # We're on Render
+            os.getenv("ENV") == "production" or
+            os.getenv("PYTHON_ENV") == "production"
+        )
+        
+        if is_production:
+            # In production, fail fast - no fallback
+            raise RuntimeError(f"CRITICAL: Cannot start production app without working Valkey/Redis instance! Error: {e}")
         else:
+            # Development mode - allow fallback
             print("Falling back to FakeValkey for local development")
             return FakeValkey()
     
-    # Fallback
-    if os.getenv("RENDER_SERVICE_ID"):
-        raise Exception("Unable to establish Valkey connection in production")
+    # Fallback for non-production
+    is_production = (
+        os.getenv("RENDER_SERVICE_ID") or
+        os.getenv("ENV") == "production" or
+        os.getenv("PYTHON_ENV") == "production"
+    )
+    
+    if is_production:
+        raise RuntimeError("CRITICAL: Unable to establish Valkey connection in production!")
     return FakeValkey()
 
 

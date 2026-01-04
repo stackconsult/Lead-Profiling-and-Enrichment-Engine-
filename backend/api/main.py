@@ -1,16 +1,41 @@
 from __future__ import annotations
 
-from typing import Dict, Optional
-import json
+import os
 import asyncio
+from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from backend.api import jobs, workspaces, enterprise
-from backend.core.valkey import valkey_client
 
-app = FastAPI(title="ProspectPulse API", version="0.1.0")
+from backend.core.config import config
+from backend.api import jobs, workspaces, enterprise
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan management with configuration validation"""
+    # Startup validation
+    try:
+        config.validate_for_startup()
+        print(f"✅ Configuration validated for {config.env} environment")
+        print(f"✅ API running on {config.host}:{config.port}")
+        print(f"✅ Valkey configured for {config.valkey_host}:{config.valkey_port}")
+    except ValueError as e:
+        print(f"❌ CRITICAL: Configuration validation failed: {e}")
+        raise
+    
+    yield
+    
+    # Cleanup
+    print("🔄 Application shutting down...")
+
+
+app = FastAPI(
+    title="ProspectPulse API",
+    description="Lead profiling and enrichment engine",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
