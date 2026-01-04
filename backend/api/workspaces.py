@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -41,6 +42,50 @@ def get_workspace(workspace_id: str) -> Dict[str, str]:
     decoded = _decode_map(data)
     decoded["id"] = workspace_id
     return decoded
+
+
+@router.get("/workspaces/test")
+async def test_workspace_storage() -> Dict[str, Any]:
+    """Test endpoint to verify workspace storage and retrieval"""
+    from backend.core.valkey import get_client
+    
+    # Force a fresh connection
+    test_client = get_client()
+    is_fake = hasattr(test_client, 'is_fake')
+    
+    # Create a test workspace
+    test_id = "connection-test-workspace"
+    test_mapping = {
+        "provider": "openai",
+        "openai_key": "sk-test",
+        "gemini_key": "",
+        "tavily_key": "",
+    }
+    
+    # Store it
+    test_client.hset(f"workspaces:{test_id}:keys", mapping=test_mapping)
+    
+    # Immediately retrieve it
+    stored_data = test_client.hgetall(f"workspaces:{test_id}:keys")
+    
+    # Check all workspace keys
+    all_workspace_keys = [
+        k.decode() if isinstance(k, (bytes, bytearray)) else k
+        for k in test_client.keys("workspaces:*:keys")
+    ]
+    
+    # Clean up test data
+    test_client.delete(f"workspaces:{test_id}:keys")
+    
+    return {
+        "is_fake_valkey": is_fake,
+        "test_storage_worked": bool(stored_data),
+        "stored_data_keys": list(stored_data.keys()) if stored_data else [],
+        "all_workspace_keys": all_workspace_keys,
+        "valkey_url": os.getenv("VALKEY_URL", "Not set"),
+        "valkey_host": os.getenv("VALKEY_HOST", "Not set"),
+        "valkey_port": os.getenv("VALKEY_PORT", "Not set"),
+    }
 
 
 @router.post("/workspaces")
