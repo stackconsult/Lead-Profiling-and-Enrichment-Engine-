@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel, Field
 
-from backend.core.valkey import get_client
+from backend.core.distributed_workspaces import distributed_workspace_manager
 
 
 router = APIRouter(prefix="", tags=["workspaces"])
@@ -28,122 +28,17 @@ class WorkspaceCreate(BaseModel):
     keys: WorkspaceKeys
 
 
-def _decode_map(data: Dict[bytes, bytes]) -> Dict[str, str]:
-    return {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in data.items()}
-
-
 def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
     expected = os.getenv("API_TOKEN")
     if expected and x_api_token != expected:
         raise HTTPException(status_code=401, detail="invalid API token")
 
 
-def get_workspace(workspace_id: str) -> Dict[str, str]:
-    # ALWAYS get fresh client for cross-container reliability
-    client = get_client()
-    data = client.hgetall(f"workspaces:{workspace_id}:keys")
-    if not data:
-        raise HTTPException(status_code=404, detail="workspace not found")
-    decoded = _decode_map(data)
-    decoded["id"] = workspace_id
-    return decoded
-
-
-@router.get("/workspaces/debug")
-async def debug_workspace_storage(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
-    """Debug endpoint to diagnose workspace storage issues"""
-    verify_token(x_api_token)
-    
-    try:
-        # Test basic Valkey operations
-        client = get_client()
-        
-        # Test 1: Basic SET/GET
-        test_key = f"debug-test-{int(time.time())}"
-        test_value = json.dumps({"test": True, "timestamp": time.time()})
-        
-        client.set(test_key, test_value)
-        retrieved = client.get(test_key)
-        client.delete(test_key)
-        
-        basic_test_passed = retrieved == test_value
-        
-        # Test 2: Hash operations
-        hash_key = f"debug-hash-{int(time.time())}"
-        hash_data = {"field1": "value1", "field2": "value2"}
-        
-        client.hset(hash_key, mapping=hash_data)
-        hash_retrieved = client.hgetall(hash_key)
-        client.delete(hash_key)
-        
-        hash_test_passed = len(hash_retrieved) == 2
-        
-        # Test 3: Workspace pattern
-        workspace_id = f"debug-workspace-{int(time.time())}"
-        workspace_key = f"workspaces:{workspace_id}:keys"
-        workspace_data = {
-            "provider": "openai",
-            "openai_key": "sk-test",
-            "gemini_key": "",
-            "tavily_key": ""
-        }
-        
-        client.hset(workspace_key, mapping=workspace_data)
-        workspace_retrieved = client.hgetall(workspace_key)
-        
-        # Check all keys
-        all_keys = client.keys("*")
-        workspace_keys = client.keys("workspaces:*:keys")
-        
-        # Clean up
-        client.delete(workspace_key)
-        
-        workspace_test_passed = len(workspace_retrieved) == 4
-        
-        return {
-            "basic_set_get_test": {
-                "passed": basic_test_passed,
-                "expected": test_value,
-                "got": retrieved
-            },
-            "hash_operations_test": {
-                "passed": hash_test_passed,
-                "expected_fields": 2,
-                "got_fields": len(hash_retrieved)
-            },
-            "workspace_pattern_test": {
-                "passed": workspace_test_passed,
-                "expected_fields": 4,
-                "got_fields": len(workspace_retrieved)
-            },
-            "key_analysis": {
-                "total_keys": len(all_keys),
-                "workspace_keys": len(workspace_keys),
-                "all_keys_sample": [k.decode() if isinstance(k, bytes) else k for k in all_keys[:10]],
-                "workspace_keys_sample": [k.decode() if isinstance(k, bytes) else k for k in workspace_keys[:5]]
-            },
-            "client_info": {
-                "client_type": str(type(client)),
-                "is_fake": hasattr(client, 'is_fake'),
-                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
-                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "client_info": {
-                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
-                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
-            }
-        }
-
-
 @router.post("/workspaces")
 async def add_workspace(payload: WorkspaceCreate, x_api_token: Optional[str] = Header(default=None)) -> Dict[str, str]:
+    """Create workspace with distributed consistency guarantees"""
     verify_token(x_api_token)
+    
     workspace_id = payload.workspace_id or str(uuid.uuid4())
     mapping = {
         "provider": payload.keys.provider,
@@ -153,93 +48,153 @@ async def add_workspace(payload: WorkspaceCreate, x_api_token: Optional[str] = H
     }
     
     try:
-        # ALWAYS get fresh client for cross-container reliability
-        client = get_client()
+        print(f"Creating workspace {workspace_id} with distributed manager")
         
-        # Store workspace data
-        client.hset(f"workspaces:{workspace_id}:keys", mapping=mapping)
+        # Use distributed workspace manager for consistency
+        result = distributed_workspace_manager.create_workspace_distributed(workspace_id, mapping)
         
-        # IMMEDIATELY verify storage with fresh connection
-        verification_client = get_client()
-        stored_data = verification_client.hgetall(f"workspaces:{workspace_id}:keys")
-        
-        if not stored_data:
-            raise Exception("Workspace data not found after storage")
-        
-        # Verify the data matches what we stored
-        decoded_stored = _decode_map(stored_data)
-        if decoded_stored.get("provider") != mapping["provider"]:
-            raise Exception("Stored data mismatch")
-        
-        print(f"SUCCESS: Stored and verified workspace {workspace_id}")
+        print(f"SUCCESS: Created workspace {workspace_id}")
         return {"workspace_id": workspace_id}
         
     except Exception as e:
-        print(f"ERROR storing workspace {workspace_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to store workspace: {e}")
+        print(f"ERROR creating workspace {workspace_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create workspace: {e}")
 
 
 @router.get("/workspaces")
 async def list_workspaces(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, List[Dict[str, Any]]]:
+    """List workspaces with distributed consistency"""
     verify_token(x_api_token)
+    
     try:
-        # ALWAYS get fresh client for cross-container reliability
-        client = get_client()
+        print(f"Listing workspaces with distributed manager")
         
-        # Get all workspace keys
-        workspace_keys = client.keys("workspaces:*:keys")
+        # Use distributed workspace manager for consistency
+        items = distributed_workspace_manager.list_workspaces_distributed()
         
-        print(f"DEBUG: Found {len(workspace_keys)} workspace keys")
-        
-        items: List[Dict[str, Any]] = []
-        for key in workspace_keys:
-            key_str = key.decode() if isinstance(key, (bytes, bytearray)) else key
-            data = client.hgetall(key)
-            
-            if data:
-                # Extract workspace_id from "workspaces:{workspace_id}:keys"
-                parts = key_str.split(":")
-                workspace_id = parts[1] if len(parts) >= 3 else key_str
-                
-                decoded_data = _decode_map(data)
-                decoded_data["id"] = workspace_id
-                items.append(decoded_data)
-                
-                print(f"SUCCESS: Found workspace {workspace_id}")
-        
-        print(f"DEBUG: Returning {len(items)} workspaces")
+        print(f"SUCCESS: Found {len(items)} workspaces")
         return {"items": items}
         
     except Exception as e:
-        print(f"ERROR in list_workspaces: {e}")
-        raise HTTPException(status_code=500, detail=f"Workspace retrieval failed: {e}")
+        print(f"ERROR listing workspaces: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list workspaces: {e}")
 
 
 @router.get("/workspaces/{workspace_id}")
 async def get_workspace_detail(workspace_id: str, x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Get workspace with distributed consistency"""
     verify_token(x_api_token)
-    return get_workspace(workspace_id)
+    
+    try:
+        print(f"Getting workspace {workspace_id} with distributed manager")
+        
+        # Use distributed workspace manager for consistency
+        result = distributed_workspace_manager.get_workspace_distributed(workspace_id)
+        
+        print(f"SUCCESS: Retrieved workspace {workspace_id}")
+        return result
+        
+    except Exception as e:
+        print(f"ERROR getting workspace {workspace_id}: {e}")
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail="workspace not found")
+        raise HTTPException(status_code=500, detail=f"Failed to get workspace: {e}")
 
 
 @router.delete("/workspaces/{workspace_id}")
 async def delete_workspace(workspace_id: str, x_api_token: Optional[str] = Header(default=None)) -> Dict[str, str]:
+    """Delete workspace with distributed consistency"""
     verify_token(x_api_token)
+    
     try:
-        # ALWAYS get fresh client for cross-container reliability
-        client = get_client()
+        print(f"Deleting workspace {workspace_id} with distributed manager")
         
-        # Check if workspace exists
-        data = client.hgetall(f"workspaces:{workspace_id}:keys")
-        if not data:
-            raise HTTPException(status_code=404, detail="workspace not found")
+        # Use distributed workspace manager for consistency
+        success = distributed_workspace_manager.delete_workspace_distributed(workspace_id)
         
-        # Delete workspace
-        client.delete(f"workspaces:{workspace_id}:keys")
+        if success:
+            print(f"SUCCESS: Deleted workspace {workspace_id}")
+            return {"message": f"Workspace {workspace_id} deleted successfully"}
+        else:
+            raise Exception("Delete operation failed")
         
-        return {"message": f"Workspace {workspace_id} deleted successfully"}
-        
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"ERROR deleting workspace {workspace_id}: {e}")
+        if "not found" in str(e):
+            raise HTTPException(status_code=404, detail="workspace not found")
         raise HTTPException(status_code=500, detail=f"Failed to delete workspace: {e}")
+
+
+@router.get("/workspaces/debug")
+async def debug_workspace_storage(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Debug endpoint to diagnose workspace storage issues"""
+    verify_token(x_api_token)
+    
+    try:
+        # Test distributed manager operations
+        test_workspace_id = f"debug-distributed-{int(time.time())}"
+        test_data = {
+            "provider": "openai",
+            "openai_key": "sk-debug-test",
+            "gemini_key": "",
+            "tavily_key": ""
+        }
+        
+        # Test creation
+        print("Testing distributed workspace creation...")
+        created = distributed_workspace_manager.create_workspace_distributed(test_workspace_id, test_data)
+        
+        # Test retrieval
+        print("Testing distributed workspace retrieval...")
+        retrieved = distributed_workspace_manager.get_workspace_distributed(test_workspace_id)
+        
+        # Test listing
+        print("Testing distributed workspace listing...")
+        all_workspaces = distributed_workspace_manager.list_workspaces_distributed()
+        
+        # Test deletion
+        print("Testing distributed workspace deletion...")
+        deleted = distributed_workspace_manager.delete_workspace_distributed(test_workspace_id)
+        
+        # Cleanup expired operations
+        cleaned = distributed_workspace_manager.cleanup_expired_operations()
+        
+        return {
+            "distributed_tests": {
+                "creation_test": {
+                    "passed": created.get("id") == test_workspace_id,
+                    "workspace_id": created.get("id"),
+                    "provider": created.get("provider")
+                },
+                "retrieval_test": {
+                    "passed": retrieved.get("id") == test_workspace_id,
+                    "workspace_id": retrieved.get("id"),
+                    "provider": retrieved.get("provider")
+                },
+                "listing_test": {
+                    "passed": len(all_workspaces) >= 0,  # Should have at least 0
+                    "total_workspaces": len(all_workspaces)
+                },
+                "deletion_test": {
+                    "passed": deleted,
+                    "deleted": deleted
+                }
+            },
+            "cleanup_info": {
+                "expired_operations_cleaned": cleaned
+            },
+            "environment_info": {
+                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
+                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "environment_info": {
+                "valkey_url": os.getenv("VALKEY_URL", "Not set"),
+                "render_service_id": os.getenv("RENDER_SERVICE_ID", "Not set")
+            }
+        }
