@@ -18,10 +18,12 @@ from redis.connection import ConnectionPool
 def _build_pool() -> ConnectionPool:
     url = os.getenv("VALKEY_URL")
     if url:
+        print(f"Connecting to Valkey via URL: {url[:20]}...")  # Debug log
         return ConnectionPool.from_url(url, max_connections=20, socket_keepalive=True)
 
     host = os.getenv("VALKEY_HOST", "localhost")
     port = int(os.getenv("VALKEY_PORT", "6379"))
+    print(f"Connecting to Valkey via host: {host}:{port}")  # Debug log
     return ConnectionPool(
         host=host,
         port=port,
@@ -30,7 +32,53 @@ def _build_pool() -> ConnectionPool:
     )
 
 
-_POOL: ConnectionPool = _build_pool()
+# Global client instance to ensure consistency across requests
+_valkey_client: Redis | FakeValkey | None = None
+_POOL: ConnectionPool | None = None
+
+def _get_pool() -> ConnectionPool:
+    """Get or create connection pool with proper environment variable handling"""
+    global _POOL
+    if _POOL is None:
+        _POOL = _build_pool()
+    return _POOL
+
+def get_client() -> Redis | FakeValkey:
+    """Return a Redis/Valkey client backed by the shared connection pool."""
+    global _valkey_client
+    
+    if _valkey_client is not None:
+        # Return existing client if it's still connected
+        try:
+            if hasattr(_valkey_client, 'ping'):
+                _valkey_client.ping()
+                return _valkey_client
+        except Exception:
+            # Connection failed, reset and try again
+            _valkey_client = None
+    
+    # Create new client with fresh pool
+    pool = _get_pool()
+    client = redis.Redis(connection_pool=pool)
+    try:
+        result = client.ping()
+        if result:
+            _valkey_client = client
+            print("SUCCESS: Valkey connection established")
+            return client
+    except Exception as e:
+        print(f"Valkey connection failed: {e}")
+        # In production, we should fail rather than use FakeValkey
+        # But for local development, we can fall back
+        if os.getenv("RENDER_SERVICE_ID"):  # We're on Render
+            raise Exception(f"Valkey connection required in production: {e}")
+        else:
+            print("Falling back to FakeValkey for local development")
+            _valkey_client = FakeValkey()
+            return _valkey_client
+    
+    _valkey_client = FakeValkey()
+    return _valkey_client
 
 
 class FakeValkey:
@@ -82,6 +130,18 @@ class FakeValkey:
             return lst[start:]
         return lst[start : end + 1]
 
+    # Additional operations needed
+    def set(self, name: str, value: str) -> None:
+        self.store[name] = {"value": value}
+
+    def get(self, name: str) -> Optional[str]:
+        data = self.store.get(name, {})
+        return data.get("value")
+
+    def delete(self, name: str) -> None:
+        self.store.pop(name, None)
+        self._lists.pop(name, None)
+
     # Pub/Sub minimal stubs
     def publish(self, channel: str, message: str) -> None:
         self._channels.setdefault(channel, []).append(message)
@@ -115,45 +175,6 @@ class FakeValkey:
 
     def ping(self) -> bool:
         return True
-
-
-# Global client instance to ensure consistency across requests
-_valkey_client: Redis | FakeValkey | None = None
-
-def get_client() -> Redis | FakeValkey:
-    """Return a Redis/Valkey client backed by the shared connection pool."""
-    global _valkey_client
-    
-    if _valkey_client is not None:
-        # Return existing client if it's still connected
-        try:
-            if hasattr(_valkey_client, 'ping'):
-                _valkey_client.ping()
-                return _valkey_client
-        except Exception:
-            # Connection failed, reset and try again
-            _valkey_client = None
-    
-    # Create new client
-    client = redis.Redis(connection_pool=_POOL)
-    try:
-        result = client.ping()
-        if result:
-            _valkey_client = client
-            return client
-    except Exception as e:
-        print(f"Valkey connection failed: {e}")
-        # In production, we should fail rather than use FakeValkey
-        # But for local development, we can fall back
-        if os.getenv("RENDER_SERVICE_ID"):  # We're on Render
-            raise Exception(f"Valkey connection required in production: {e}")
-        else:
-            print("Falling back to FakeValkey for local development")
-            _valkey_client = FakeValkey()
-            return _valkey_client
-    
-    _valkey_client = FakeValkey()
-    return _valkey_client
 
 
 valkey_client: Redis | FakeValkey = get_client()

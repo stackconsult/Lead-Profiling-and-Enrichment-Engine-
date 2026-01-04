@@ -7,7 +7,7 @@ import asyncio
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from backend.api import jobs, workspaces
+from backend.api import jobs, workspaces, enterprise
 from backend.core.valkey import valkey_client
 
 app = FastAPI(title="ProspectPulse API", version="0.1.0")
@@ -104,3 +104,4 @@ def verify_token(x_api_token: Optional[str] = Header(default=None)) -> None:
 
 app.include_router(jobs.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["jobs"])
 app.include_router(workspaces.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["workspaces"])
+app.include_router(enterprise.router, prefix="/api", dependencies=[Depends(verify_token)], tags=["enterprise"])

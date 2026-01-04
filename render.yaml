@@ -13,6 +13,17 @@ services:
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.12
+      # Enterprise Integration Environment Variables
+      - key: SALESFORCE_API_KEY
+        value: ""  # Set in Render dashboard
+      - key: SALESFORCE_API_URL
+        value: ""  # Set in Render dashboard
+      - key: SALESFORCE_ENV
+        value: "production"
+      - key: HUBSPOT_API_KEY
+        value: ""  # Set in Render dashboard
+      - key: HUBSPOT_ENV
+        value: "production"
     healthCheck:
       path: /health
       initialDelaySeconds: 30
@@ -36,6 +47,17 @@ services:
           envVar: API_TOKEN
       - key: PYTHON_VERSION
         value: 3.12
+      # Enterprise Integration Environment Variables
+      - key: SALESFORCE_API_KEY
+        value: ""  # Set in Render dashboard
+      - key: SALESFORCE_API_URL
+        value: ""  # Set in Render dashboard
+      - key: SALESFORCE_ENV
+        value: "production"
+      - key: HUBSPOT_API_KEY
+        value: ""  # Set in Render dashboard
+      - key: HUBSPOT_ENV
+        value: "production"
 
   - type: redis
     name: prospectpulse-valkey
