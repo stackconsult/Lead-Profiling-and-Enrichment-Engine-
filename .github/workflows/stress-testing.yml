@@ -48,4 +48,4 @@ jobs:
     
     - name: Run health check
       run: |
-        python tests/run_tests.py --api-url http://localhost:8000 --api-token test-token-123 --test-type health
+        python tests/simple_health_check.py --api-url http://localhost:8000 --api-token test-token-123

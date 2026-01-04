@@ -10,12 +10,20 @@ import sys
 import os
 from typing import Dict, Any
 
-# Add backend to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+# Add project root to Python path for imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
-from tests.stress_test import StressTestSuite, run_stress_tests
-from tests.load_test import run_load_test
-from tests.reliability_monitor import ReliabilityMonitor, run_reliability_monitor
+# Now import the test modules
+try:
+    from tests.stress_test import StressTestSuite, run_stress_tests
+    from tests.load_test import run_load_test
+    from tests.reliability_monitor import ReliabilityMonitor, run_reliability_monitor
+except ImportError as e:
+    print(f"Import error: {e}")
+    print(f"Project root: {project_root}")
+    print(f"Python path: {sys.path}")
+    sys.exit(1)
 
 
 def run_stress_test_suite(api_url: str, api_token: str = None):
