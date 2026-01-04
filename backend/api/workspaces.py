@@ -19,7 +19,6 @@ router = APIRouter(prefix="", tags=["workspaces"])
 
 
 class WorkspaceKeys(BaseModel):
-    provider: str
     openai_key: Optional[str] = None
     gemini_key: Optional[str] = None
     tavily_key: Optional[str] = None
@@ -44,7 +43,7 @@ async def add_workspace(payload: WorkspaceCreate, x_api_token: Optional[str] = H
     
     workspace_id = payload.workspace_id or str(uuid.uuid4())
     mapping = {
-        "provider": payload.keys.provider,
+        "provider": payload.provider,
         "openai_key": payload.keys.openai_key or "",
         "gemini_key": payload.keys.gemini_key or "",
         "tavily_key": payload.keys.tavily_key or "",

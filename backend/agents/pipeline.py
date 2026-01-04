@@ -76,7 +76,7 @@ class AgentPipeline:
             
             if job_id:
                 client.lpush(f"{job_key}:leads", lead_id)
-                set_job_status(job_id, "completed", progress=1.0)
+                set_job_status(job_id, "complete", progress=1.0)
             
             return {"id": lead_id, **synthesized}
             

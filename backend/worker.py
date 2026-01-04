@@ -26,10 +26,7 @@ def process_lead(lead: Dict, job_id: Optional[str] = None, workspace: Optional[D
         result = pipeline.run(lead, job_id=job_id)
         
         if job_id:
-            set_job_status(job_id, "completed", progress=1.0)
-            # Store result in Valkey for retrieval
-            client = get_client()
-            client.set(f"leads:{lead.get('id', 'unknown')}", json.dumps(result))
+            set_job_status(job_id, "complete", progress=1.0)
         
         return result
         
