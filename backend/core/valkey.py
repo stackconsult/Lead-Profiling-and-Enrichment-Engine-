@@ -142,9 +142,15 @@ def get_client() -> Redis | FakeValkey:
             _valkey_client = client
             return client
     except Exception as e:
-        print(f"Valkey connection failed: {e}, falling back to FakeValkey")
-        _valkey_client = FakeValkey()
-        return _valkey_client
+        print(f"Valkey connection failed: {e}")
+        # In production, we should fail rather than use FakeValkey
+        # But for local development, we can fall back
+        if os.getenv("RENDER_SERVICE_ID"):  # We're on Render
+            raise Exception(f"Valkey connection required in production: {e}")
+        else:
+            print("Falling back to FakeValkey for local development")
+            _valkey_client = FakeValkey()
+            return _valkey_client
     
     _valkey_client = FakeValkey()
     return _valkey_client
