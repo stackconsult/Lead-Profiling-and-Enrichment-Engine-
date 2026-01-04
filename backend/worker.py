@@ -5,7 +5,7 @@ import json
 from typing import Dict, Optional
 
 from backend.agents.pipeline import AgentPipeline
-from backend.core.valkey import set_job_status, valkey_client
+from backend.core.valkey import set_job_status, get_client
 from backend.core.llm import llm_client
 
 
@@ -28,7 +28,8 @@ def process_lead(lead: Dict, job_id: Optional[str] = None, workspace: Optional[D
         if job_id:
             set_job_status(job_id, "completed", progress=1.0)
             # Store result in Valkey for retrieval
-            valkey_client.set(f"leads:{lead.get('id', 'unknown')}", json.dumps(result))
+            client = get_client()
+            client.set(f"leads:{lead.get('id', 'unknown')}", json.dumps(result))
         
         return result
         
@@ -46,7 +47,7 @@ def setup_rq_worker():
         from rq import Worker, Queue, Connection
         
         # Get Valkey connection
-        conn = valkey_client
+        conn = get_client()
         
         # Listen to the default queue
         q = Queue(connection=conn)

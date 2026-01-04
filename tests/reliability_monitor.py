@@ -11,7 +11,7 @@ import statistics
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import httpx
-from backend.core.valkey import valkey_client
+from backend.core.valkey import get_client
 
 
 class ReliabilityMonitor:
@@ -46,7 +46,8 @@ class ReliabilityMonitor:
         """Check Valkey connection health"""
         try:
             start_time = time.time()
-            valkey_client.ping()
+            client = get_client()
+            client.ping()
             response_time_ms = (time.time() - start_time) * 1000
             
             # Test basic operations
@@ -55,16 +56,16 @@ class ReliabilityMonitor:
             
             # Test SET
             set_start = time.time()
-            valkey_client.set(test_key, test_value)
+            client.set(test_key, test_value)
             set_time_ms = (time.time() - set_start) * 1000
             
             # Test GET
             get_start = time.time()
-            retrieved = valkey_client.get(test_key)
+            retrieved = client.get(test_key)
             get_time_ms = (time.time() - get_start) * 1000
             
             # Test DELETE
-            valkey_client.delete(test_key)
+            client.delete(test_key)
             
             return {
                 'healthy': retrieved == test_value,

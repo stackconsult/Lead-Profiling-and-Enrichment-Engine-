@@ -38,6 +38,20 @@ def _build_pool() -> ConnectionPool:
 # Global connection pool - shared across this process
 _POOL: ConnectionPool = _build_pool()
 
+def _is_ci_environment() -> bool:
+    """Check if running in CI/testing environment"""
+    return (
+        os.getenv("CI") == "true" or
+        os.getenv("GITHUB_ACTIONS") == "true" or
+        os.getenv("CIRCLECI") == "true"
+    )
+
+
+def _is_production_environment() -> bool:
+    """Check if running in true production (not CI/testing)"""
+    return bool(os.getenv("RENDER_SERVICE_ID")) and not _is_ci_environment()
+
+
 def get_client() -> Redis | FakeValkey:
     """Return a Redis/Valkey client - ALWAYS create fresh connection for reliability"""
     try:
@@ -50,29 +64,16 @@ def get_client() -> Redis | FakeValkey:
     except Exception as e:
         print(f"Valkey connection failed: {e}")
         
-        # Check if we're in production environment
-        is_production = (
-            os.getenv("RENDER_SERVICE_ID") or  # We're on Render
-            os.getenv("ENV") == "production" or
-            os.getenv("PYTHON_ENV") == "production"
-        )
-        
-        if is_production:
+        if _is_production_environment():
             # In production, fail fast - no fallback
             raise RuntimeError(f"CRITICAL: Cannot start production app without working Valkey/Redis instance! Error: {e}")
         else:
-            # Development mode - allow fallback
-            print("Falling back to FakeValkey for local development")
+            # Development or CI mode - allow fallback
+            print("Falling back to FakeValkey for local development/testing")
             return FakeValkey()
     
     # Fallback for non-production
-    is_production = (
-        os.getenv("RENDER_SERVICE_ID") or
-        os.getenv("ENV") == "production" or
-        os.getenv("PYTHON_ENV") == "production"
-    )
-    
-    if is_production:
+    if _is_production_environment():
         raise RuntimeError("CRITICAL: Unable to establish Valkey connection in production!")
     return FakeValkey()
 
@@ -194,5 +195,4 @@ def set_job_status(job_id: str, status: str, progress: float | None = None, erro
         payload = json.dumps(mapping)
         client.publish(f"jobs:{job_id}:events", payload)
     except Exception:
-        pass# Best-effort publish
-        pass
+        pass  # Best-effort publish
