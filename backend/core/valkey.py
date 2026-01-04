@@ -62,8 +62,8 @@ def get_client() -> Redis | FakeValkey:
     return FakeValkey()
 
 
-# Global client for backward compatibility - but don't rely on it
-valkey_client: Redis | FakeValkey = get_client()
+# DO NOT initialize global client at import time - this causes startup failures
+# valkey_client: Redis | FakeValkey = get_client()  # REMOVED - causes import-time connection
 
 
 class FakeValkey:

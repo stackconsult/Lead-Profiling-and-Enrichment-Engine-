@@ -36,9 +36,16 @@ class DistributedWorkspaceManager:
     """
     
     def __init__(self):
-        self.client = get_client()
+        # DO NOT initialize client at import time - this causes startup failures
+        self.client = None
         self.lock_timeout = 10  # 10 seconds
         self.operation_timeout = 30  # 30 seconds
+    
+    def _get_client(self):
+        """Get fresh client when needed, not at import time"""
+        if self.client is None:
+            self.client = get_client()
+        return self.client
     
     def _acquire_lock(self, resource: str, timeout: int = None) -> Optional[str]:
         """Acquire distributed lock using Redis SET NX EX"""
@@ -49,7 +56,8 @@ class DistributedWorkspaceManager:
         lock_value = str(uuid.uuid4())
         
         # Try to acquire lock with expiration
-        result = self.client.set(lock_key, lock_value, nx=True, ex=timeout)
+        client = self._get_client()
+        result = client.set(lock_key, lock_value, nx=True, ex=timeout)
         
         if result:
             return lock_value
@@ -58,6 +66,7 @@ class DistributedWorkspaceManager:
     def _release_lock(self, resource: str, lock_value: str) -> bool:
         """Release distributed lock using Lua script for atomicity"""
         lock_key = f"locks:{resource}"
+        client = self._get_client()
         
         # Lua script to atomically release lock if we own it
         lua_script = """
@@ -68,11 +77,12 @@ class DistributedWorkspaceManager:
         end
         """
         
-        result = self.client.eval(lua_script, 1, lock_key, lock_value)
+        result = client.eval(lua_script, 1, lock_key, lock_value)
         return result == 1
     
     def _queue_operation(self, operation: WorkspaceOperation) -> str:
         """Queue operation for distributed processing"""
+        client = self._get_client()
         operation_key = f"operations:{operation.operation_id}"
         queue_key = "workspace_operations_queue"
         
@@ -88,18 +98,19 @@ class DistributedWorkspaceManager:
         }
         
         # Store operation details
-        self.client.hset(operation_key, mapping=operation_data)
-        self.client.expire(operation_key, self.operation_timeout)
+        client.hset(operation_key, mapping=operation_data)
+        client.expire(operation_key, self.operation_timeout)
         
         # Add to queue
-        self.client.lpush(queue_key, operation.operation_id)
+        client.lpush(queue_key, operation.operation_id)
         
         return operation.operation_id
     
     def _get_operation_result(self, operation_id: str) -> Optional[Dict[str, Any]]:
         """Get operation result"""
+        client = self._get_client()
         operation_key = f"operations:{operation_id}"
-        data = self.client.hgetall(operation_key)
+        data = client.hgetall(operation_key)
         
         if not data:
             return None
@@ -147,7 +158,8 @@ class DistributedWorkspaceManager:
         
         try:
             # Check if workspace already exists
-            existing_data = self.client.hgetall(workspace_key)
+            client = self._get_client()
+            existing_data = client.hgetall(workspace_key)
             if existing_data:
                 # Workspace already exists, return existing data
                 decoded_data = self._decode_map(existing_data)
@@ -155,16 +167,16 @@ class DistributedWorkspaceManager:
                 return decoded_data
             
             # Store workspace data
-            self.client.hset(workspace_key, mapping=operation.data)
+            client.hset(workspace_key, mapping=operation.data)
             
             # Verify storage
-            stored_data = self.client.hgetall(workspace_key)
+            stored_data = client.hgetall(workspace_key)
             if not stored_data:
                 raise Exception("Workspace data not found after storage")
             
             # Update operation status
             operation_key = f"operations:{operation.operation_id}"
-            self.client.hset(operation_key, "status", "completed")
+            client.hset(operation_key, "status", "completed")
             
             # Return success
             decoded_data = self._decode_map(stored_data)
@@ -173,9 +185,10 @@ class DistributedWorkspaceManager:
             
         except Exception as e:
             # Update operation status to failed
+            client = self._get_client()
             operation_key = f"operations:{operation.operation_id}"
-            self.client.hset(operation_key, "status", "failed")
-            self.client.hset(operation_key, "error", str(e))
+            client.hset(operation_key, "status", "failed")
+            client.hset(operation_key, "error", str(e))
             raise
         
         finally:
@@ -264,14 +277,15 @@ class DistributedWorkspaceManager:
     
     def cleanup_expired_operations(self) -> int:
         """Clean up expired operations"""
+        client = self._get_client()
         pattern = "operations:*"
-        keys = self.client.keys(pattern)
+        keys = client.keys(pattern)
         
         cleaned = 0
         for key in keys:
-            ttl = self.client.ttl(key)
+            ttl = client.ttl(key)
             if ttl == -1:  # No expiration set
-                self.client.expire(key, self.operation_timeout)
+                client.expire(key, self.operation_timeout)
             elif ttl == -2:  # Key doesn't exist
                 cleaned += 1
         
