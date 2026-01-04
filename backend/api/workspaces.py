@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.core.distributed_workspaces import distributed_workspace_manager
 from backend.core.workspace_investigator import workspace_investigator
+from backend.core.workspace_listing_fix import workspace_listing_fix
 
 
 router = APIRouter(prefix="", tags=["workspaces"])
@@ -125,6 +126,38 @@ async def delete_workspace(workspace_id: str, x_api_token: Optional[str] = Heade
         if "not found" in str(e):
             raise HTTPException(status_code=404, detail="workspace not found")
         raise HTTPException(status_code=500, detail=f"Failed to delete workspace: {e}")
+
+
+@router.get("/workspaces/fix")
+async def fix_workspace_listing(x_api_token: Optional[str] = Header(default=None)) -> Dict[str, Any]:
+    """Fix workspace listing with multiple approaches"""
+    verify_token(x_api_token)
+    
+    try:
+        print("Running workspace listing fix...")
+        
+        # Investigate key patterns
+        key_investigation = workspace_listing_fix.investigate_key_patterns()
+        
+        # Try fixed listing
+        fixed_workspaces = workspace_listing_fix.fix_workspace_listing()
+        
+        return {
+            'key_investigation': key_investigation,
+            'fixed_listing': {
+                'workspaces_found': len(fixed_workspaces),
+                'workspaces': fixed_workspaces
+            },
+            'timestamp': datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        print(f"Fix failed: {e}")
+        return {
+            'error': str(e),
+            'error_type': type(e).__name__,
+            'timestamp': datetime.utcnow().isoformat()
+        }
 
 
 @router.get("/workspaces/investigate")
