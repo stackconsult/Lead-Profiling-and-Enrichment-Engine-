@@ -72,6 +72,15 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
     # Check if we're using fake or real valkey
     is_fake = hasattr(valkey_client, 'is_fake')
     
+    # Force reconnection if using fake valkey
+    if is_fake:
+        print("WARNING: Using FakeValkey - data will not persist!")
+        # Try to get a real connection
+        from backend.core.valkey import get_client
+        global valkey_client
+        valkey_client = get_client()
+        is_fake = hasattr(valkey_client, 'is_fake')
+    
     # Debug: Log all keys found
     all_keys = [
         k.decode() if isinstance(k, (bytes, bytearray)) else k
@@ -81,6 +90,8 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
         k.decode() if isinstance(k, (bytes, bytearray)) else k
         for k in valkey_client.keys("workspaces:*:keys")
     ]
+    
+    print(f"DEBUG: is_fake={is_fake}, all_keys={all_keys}, workspace_keys={workspace_keys}")
     
     # Return debug info temporarily
     debug_info = {
@@ -94,7 +105,7 @@ async def list_workspaces() -> Dict[str, List[Dict[str, Any]]]:
     items: List[Dict[str, Any]] = []
     for key in keys:
         data = valkey_client.hgetall(key)
-        debug_info["debug_data_for_key"] = {key: str(data)}
+        print(f"DEBUG: Data for key {key}: {data}")
         if data:
             # Extract workspace_id from "workspaces:{workspace_id}:keys"
             parts = str(key).split(":")
