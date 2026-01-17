@@ -68,12 +68,9 @@ class AppConfig:
         valkey_port = int(os.getenv("VALKEY_PORT", "6379"))
         valkey_url = os.getenv("VALKEY_URL")
         
-        # Only validate Valkey in true production (not CI/testing)
-        if is_production and not valkey_url and (valkey_host == "localhost" or valkey_host == "127.0.0.1"):
-            raise ValueError(
-                "CRITICAL: In production, VALKEY_URL must be set to a real Redis/Valkey instance, "
-                "not localhost. Current: VALKEY_HOST=localhost"
-            )
+        # Note: Valkey validation is deferred to validate_for_startup() method
+        # This allows the application to import successfully and validate during startup
+        # when all environment variables are properly set by the platform (e.g., Render)
         
         return cls(
             env=env,
